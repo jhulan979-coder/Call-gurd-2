@@ -14,7 +14,7 @@ jobs:
       - name: Prepare project files
         run: |
           mkdir -p lib
-          for f in main core tabs ai_tab calls_tab protect; do
+          for f in main core tabs ai_tab calls_tab protect receptionist_tab; do
             if [ ! -f lib/$f.dart ]; then
               if [ -f $f.dart ]; then
                 cp $f.dart lib/$f.dart
@@ -29,9 +29,11 @@ jobs:
           test -f lib/ai_tab.dart || (echo "AI_TAB.DART NAHI MILI" && exit 1)
           test -f lib/calls_tab.dart || (echo "CALLS_TAB.DART NAHI MILI" && exit 1)
           test -f lib/protect.dart || (echo "PROTECT.DART NAHI MILI" && exit 1)
-          sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'calls_tab.dart';#" lib/main.dart
+          test -f lib/receptionist_tab.dart || (echo "RECEPTIONIST_TAB.DART NAHI MILI" && exit 1)
+          sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'calls_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';#" lib/main.dart
           sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CallsTab(),#" lib/main.dart
+          sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
           sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.call_outlined), label: 'Calls'),#" lib/main.dart
           sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),#" lib/main.dart
           grep -q "calls_tab.dart" lib/main.dart || (echo "PATCH1 FAIL" && exit 1)
@@ -39,6 +41,8 @@ jobs:
           grep -q "Icons.call_outlined" lib/main.dart || (echo "PATCH3 FAIL" && exit 1)
           grep -q "const ProtectCard()" lib/main.dart || (echo "PATCH4 FAIL" && exit 1)
           grep -q "protect.dart" lib/main.dart || (echo "PATCH5 FAIL" && exit 1)
+          grep -q "const AiHub()" lib/main.dart || (echo "PATCH6 FAIL" && exit 1)
+          grep -q "receptionist_tab.dart" lib/main.dart || (echo "PATCH7 FAIL" && exit 1)
           if [ ! -f pubspec.yaml ]; then
             cat > pubspec.yaml << 'EOF'
           name: call_guard
@@ -54,6 +58,8 @@ jobs:
               sdk: flutter
             shared_preferences: ^2.2.0
             http: ^1.2.0
+            speech_to_text: ^7.0.0
+            flutter_tts: ^4.2.0
 
           flutter:
             uses-material-design: true
@@ -74,10 +80,17 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android android
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          if grep -q "<queries>" android/app/src/main/AndroidManifest.xml; then
+            sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' android/app/src/main/AndroidManifest.xml
+          else
+            sed -i 's#<application#<queries><intent><action android:name="android.speech.RecognitionService"/></intent><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>\n    <application#' android/app/src/main/AndroidManifest.xml
+          fi
           sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    </application>#' android/app/src/main/AndroidManifest.xml
           grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST PATCH FAIL" && exit 1)
           grep -q "READ_CONTACTS" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST CONTACTS FAIL" && exit 1)
+          grep -q "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST AUDIO FAIL" && exit 1)
+          grep -q "RecognitionService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST QUERIES FAIL" && exit 1)
 
       - name: Add native code
         run: |
