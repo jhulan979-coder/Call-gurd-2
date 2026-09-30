@@ -11,17 +11,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Find and fix main.dart
+      - name: Prepare project files
         run: |
-          echo "=== Repo files ==="
-          find . -path ./.git -prune -o -type f -print
           mkdir -p lib
           if [ ! -f lib/main.dart ]; then
-            F=$(find . -path ./.git -prune -o -type f -iname 'main.dart*' -print | head -n 1)
+            F=$(find . -path ./.git -prune -o -type f -name 'main.dart' -print | head -n 1)
             echo "Found: $F"
             if [ -n "$F" ]; then cp "$F" lib/main.dart; fi
           fi
           test -f lib/main.dart || (echo "MAIN.DART REPO ME NAHI HAI" && exit 1)
+          if [ ! -f pubspec.yaml ]; then
+            cat > pubspec.yaml << 'EOF'
+          name: call_guard
+          description: Call Guard - spam number checker and block list.
+          publish_to: 'none'
+          version: 1.0.0+1
+
+          environment:
+            sdk: '>=3.0.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            shared_preferences: ^2.2.0
+            http: ^1.2.0
+
+          flutter:
+            uses-material-design: true
+          EOF
+          fi
+          ls -la . lib
 
       - uses: actions/setup-java@v4
         with:
