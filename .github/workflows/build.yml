@@ -104,6 +104,7 @@ jobs:
               private var pendingLog: MethodChannel.Result? = null
               private var pendingRole: MethodChannel.Result? = null
               private var pendingNotif: MethodChannel.Result? = null
+              private var pendingContacts: MethodChannel.Result? = null
 
               override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
@@ -120,6 +121,16 @@ jobs:
                                   }
                               }
                               "getRecentCalls" -> result.success(readCalls())
+                              "hasContactsPermission" -> result.success(hasContactsPerm())
+                              "requestContactsPermission" -> {
+                                  if (hasContactsPerm()) {
+                                      result.success(true)
+                                  } else {
+                                      pendingContacts = result
+                                      requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 1003)
+                                  }
+                              }
+                              "getContacts" -> result.success(readContacts())
                               "isScreeningActive" -> result.success(roleHeld())
                               "requestScreeningRole" -> {
                                   if (Build.VERSION.SDK_INT >= 29) {
@@ -193,6 +204,10 @@ jobs:
                       pendingNotif?.success(ok)
                       pendingNotif = null
                   }
+                  if (requestCode == 1003) {
+                      pendingContacts?.success(hasContactsPerm())
+                      pendingContacts = null
+                  }
               }
 
               override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -214,6 +229,32 @@ jobs:
                   } catch (e: Exception) {
                   }
                   return null
+              }
+
+              private fun readContacts(): List<Map<String, Any?>> {
+                  val out = ArrayList<Map<String, Any?>>()
+                  if (!hasContactsPerm()) return out
+                  try {
+                      val cursor = contentResolver.query(
+                          ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                          arrayOf(
+                              ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                              ContactsContract.CommonDataKinds.Phone.NUMBER
+                          ),
+                          null, null,
+                          ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+                      )
+                      cursor?.use {
+                          while (it.moveToNext()) {
+                              out.add(mapOf(
+                                  "name" to it.getString(0),
+                                  "number" to it.getString(1)
+                              ))
+                          }
+                      }
+                  } catch (e: Exception) {
+                  }
+                  return out
               }
 
               private fun readCalls(): List<Map<String, Any?>> {
