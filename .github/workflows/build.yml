@@ -74,9 +74,10 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android android
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
           sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    </application>#' android/app/src/main/AndroidManifest.xml
           grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST PATCH FAIL" && exit 1)
+          grep -q "READ_CONTACTS" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST CONTACTS FAIL" && exit 1)
 
       - name: Add native code
         run: |
@@ -91,8 +92,10 @@ jobs:
           import android.content.Context
           import android.content.Intent
           import android.content.pm.PackageManager
+          import android.net.Uri
           import android.os.Build
           import android.provider.CallLog
+          import android.provider.ContactsContract
           import io.flutter.embedding.android.FlutterActivity
           import io.flutter.embedding.engine.FlutterEngine
           import io.flutter.plugin.common.MethodChannel
@@ -107,13 +110,13 @@ jobs:
                   MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "callguard/native")
                       .setMethodCallHandler { call, result ->
                           when (call.method) {
-                              "hasCallLogPermission" -> result.success(hasLogPerm())
+                              "hasCallLogPermission" -> result.success(hasLogPerm() && (hasContactsPerm() || contactsAsked()))
                               "requestCallLogPermission" -> {
-                                  if (hasLogPerm()) {
+                                  if (hasLogPerm() && (hasContactsPerm() || contactsAsked())) {
                                       result.success(true)
                                   } else {
                                       pendingLog = result
-                                      requestPermissions(arrayOf(Manifest.permission.READ_CALL_LOG), 1001)
+                                      requestPermissions(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS), 1001)
                                   }
                               }
                               "getRecentCalls" -> result.success(readCalls())
@@ -133,6 +136,14 @@ jobs:
 
               private fun hasLogPerm(): Boolean {
                   return checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+              }
+
+              private fun hasContactsPerm(): Boolean {
+                  return checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+              }
+
+              private fun contactsAsked(): Boolean {
+                  return getSharedPreferences("cg_native", Context.MODE_PRIVATE).getBoolean("contacts_asked", false)
               }
 
               private fun roleHeld(): Boolean {
@@ -172,12 +183,13 @@ jobs:
 
               override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
                   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-                  val ok = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
                   if (requestCode == 1001) {
-                      pendingLog?.success(ok)
+                      getSharedPreferences("cg_native", Context.MODE_PRIVATE).edit().putBoolean("contacts_asked", true).apply()
+                      pendingLog?.success(hasLogPerm())
                       pendingLog = null
                   }
                   if (requestCode == 1002) {
+                      val ok = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
                       pendingNotif?.success(ok)
                       pendingNotif = null
                   }
@@ -191,6 +203,19 @@ jobs:
                   }
               }
 
+              private fun lookupName(number: String?): String? {
+                  if (number.isNullOrEmpty() || !hasContactsPerm()) return null
+                  try {
+                      val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
+                      val c = contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)
+                      c?.use {
+                          if (it.moveToFirst()) return it.getString(0)
+                      }
+                  } catch (e: Exception) {
+                  }
+                  return null
+              }
+
               private fun readCalls(): List<Map<String, Any?>> {
                   val out = ArrayList<Map<String, Any?>>()
                   val cursor = contentResolver.query(
@@ -201,9 +226,12 @@ jobs:
                   cursor?.use {
                       var count = 0
                       while (it.moveToNext() && count < 100) {
+                          val number = it.getString(0)
+                          val cached = it.getString(1)
+                          val name = if (!cached.isNullOrEmpty()) cached else lookupName(number)
                           out.add(mapOf(
-                              "number" to it.getString(0),
-                              "name" to it.getString(1),
+                              "number" to number,
+                              "name" to name,
                               "date" to it.getLong(2),
                               "type" to it.getInt(3)
                           ))
