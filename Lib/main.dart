@@ -6,7 +6,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() => runApp(const CallGuardApp());
 
 class CallGuardApp extends StatelessWidget {
-  const CallGuardApp({super.key  Widget build(BuildContext context) {
+  const CallGuardApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Call Guard',
       debugShowCheckedModeBanner: false,
