@@ -134,7 +134,7 @@ Future<String> askAI(String system, List<Map<String, String>> messages) async {
       .toList();
   final res = await http.post(
     Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'),
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent'),
     headers: {
       'content-type': 'application/json',
       'x-goog-api-key': store.apiKey,
