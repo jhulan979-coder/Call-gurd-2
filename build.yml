@@ -1,0 +1,74 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare project files
+        run: |
+          mkdir -p lib
+          for f in main core tabs ai_tab; do
+            if [ ! -f lib/$f.dart ]; then
+              if [ -f $f.dart ]; then
+                cp $f.dart lib/$f.dart
+              elif [ -f .github/workflows/$f.dart ]; then
+                cp .github/workflows/$f.dart lib/$f.dart
+              fi
+            fi
+          done
+          test -f lib/main.dart || (echo "MAIN.DART NAHI MILI" && exit 1)
+          test -f lib/core.dart || (echo "CORE.DART NAHI MILI" && exit 1)
+          test -f lib/tabs.dart || (echo "TABS.DART NAHI MILI" && exit 1)
+          test -f lib/ai_tab.dart || (echo "AI_TAB.DART NAHI MILI" && exit 1)
+          if [ ! -f pubspec.yaml ]; then
+            cat > pubspec.yaml << 'EOF'
+          name: call_guard
+          description: Call Guard - spam number checker and block list.
+          publish_to: 'none'
+          version: 1.0.0+1
+
+          environment:
+            sdk: '>=3.0.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            shared_preferences: ^2.2.0
+            http: ^1.2.0
+
+          flutter:
+            uses-material-design: true
+          EOF
+          fi
+          ls -la . lib
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Create Android project files
+        run: |
+          flutter create --platforms=android --project-name call_guard tmp_app
+          cp -r tmp_app/android android
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+
+      - run: flutter pub get
+
+      - run: flutter build apk --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: call-guard-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
