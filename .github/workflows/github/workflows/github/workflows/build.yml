@@ -11,11 +11,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fix main.dart location
+      - name: Find and fix main.dart
         run: |
+          echo "=== Repo files ==="
+          find . -path ./.git -prune -o -type f -print
           mkdir -p lib
-          if [ -f main.dart ]; then mv main.dart lib/main.dart; fi
-          ls -R lib
+          if [ ! -f lib/main.dart ]; then
+            F=$(find . -path ./.git -prune -o -type f -iname 'main.dart*' -print | head -n 1)
+            echo "Found: $F"
+            if [ -n "$F" ]; then cp "$F" lib/main.dart; fi
+          fi
+          test -f lib/main.dart || (echo "MAIN.DART REPO ME NAHI HAI" && exit 1)
 
       - uses: actions/setup-java@v4
         with:
