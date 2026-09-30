@@ -14,7 +14,7 @@ jobs:
       - name: Prepare project files
         run: |
           mkdir -p lib
-          for f in main core tabs ai_tab calls_tab; do
+          for f in main core tabs ai_tab calls_tab protect; do
             if [ ! -f lib/$f.dart ]; then
               if [ -f $f.dart ]; then
                 cp $f.dart lib/$f.dart
@@ -28,12 +28,17 @@ jobs:
           test -f lib/tabs.dart || (echo "TABS.DART NAHI MILI" && exit 1)
           test -f lib/ai_tab.dart || (echo "AI_TAB.DART NAHI MILI" && exit 1)
           test -f lib/calls_tab.dart || (echo "CALLS_TAB.DART NAHI MILI" && exit 1)
+          test -f lib/protect.dart || (echo "PROTECT.DART NAHI MILI" && exit 1)
           sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'calls_tab.dart';#" lib/main.dart
+          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';#" lib/main.dart
           sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CallsTab(),#" lib/main.dart
           sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.call_outlined), label: 'Calls'),#" lib/main.dart
+          sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),#" lib/main.dart
           grep -q "calls_tab.dart" lib/main.dart || (echo "PATCH1 FAIL" && exit 1)
           grep -q "const CallsTab()" lib/main.dart || (echo "PATCH2 FAIL" && exit 1)
           grep -q "Icons.call_outlined" lib/main.dart || (echo "PATCH3 FAIL" && exit 1)
+          grep -q "const ProtectCard()" lib/main.dart || (echo "PATCH4 FAIL" && exit 1)
+          grep -q "protect.dart" lib/main.dart || (echo "PATCH5 FAIL" && exit 1)
           if [ ! -f pubspec.yaml ]; then
             cat > pubspec.yaml << 'EOF'
           name: call_guard
@@ -69,9 +74,11 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android android
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    </application>#' android/app/src/main/AndroidManifest.xml
+          grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST PATCH FAIL" && exit 1)
 
-      - name: Add native call log code
+      - name: Add native code
         run: |
           rm -f $(find android/app/src/main -name 'MainActivity.*')
           mkdir -p android/app/src/main/kotlin/com/example/call_guard
@@ -79,44 +86,108 @@ jobs:
           package com.example.call_guard
 
           import android.Manifest
+          import android.app.Activity
+          import android.app.role.RoleManager
+          import android.content.Context
+          import android.content.Intent
           import android.content.pm.PackageManager
+          import android.os.Build
           import android.provider.CallLog
           import io.flutter.embedding.android.FlutterActivity
           import io.flutter.embedding.engine.FlutterEngine
           import io.flutter.plugin.common.MethodChannel
 
           class MainActivity : FlutterActivity() {
-              private var pending: MethodChannel.Result? = null
+              private var pendingLog: MethodChannel.Result? = null
+              private var pendingRole: MethodChannel.Result? = null
+              private var pendingNotif: MethodChannel.Result? = null
 
               override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
                   MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "callguard/native")
                       .setMethodCallHandler { call, result ->
                           when (call.method) {
-                              "hasCallLogPermission" -> result.success(hasPerm())
+                              "hasCallLogPermission" -> result.success(hasLogPerm())
                               "requestCallLogPermission" -> {
-                                  if (hasPerm()) {
+                                  if (hasLogPerm()) {
                                       result.success(true)
                                   } else {
-                                      pending = result
+                                      pendingLog = result
                                       requestPermissions(arrayOf(Manifest.permission.READ_CALL_LOG), 1001)
                                   }
                               }
                               "getRecentCalls" -> result.success(readCalls())
+                              "isScreeningActive" -> result.success(roleHeld())
+                              "requestScreeningRole" -> {
+                                  if (Build.VERSION.SDK_INT >= 29) {
+                                      requestRole(result)
+                                  } else {
+                                      result.success(false)
+                                  }
+                              }
+                              "requestNotificationPermission" -> requestNotif(result)
                               else -> result.notImplemented()
                           }
                       }
               }
 
-              private fun hasPerm(): Boolean {
+              private fun hasLogPerm(): Boolean {
                   return checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+              }
+
+              private fun roleHeld(): Boolean {
+                  if (Build.VERSION.SDK_INT < 29) return false
+                  return roleHeldApi29()
+              }
+
+              @android.annotation.TargetApi(29)
+              private fun roleHeldApi29(): Boolean {
+                  val rm = getSystemService(Context.ROLE_SERVICE) as RoleManager
+                  return rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING) && rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)
+              }
+
+              @android.annotation.TargetApi(29)
+              private fun requestRole(result: MethodChannel.Result) {
+                  val rm = getSystemService(Context.ROLE_SERVICE) as RoleManager
+                  if (!rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
+                      result.success(false)
+                      return
+                  }
+                  if (rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
+                      result.success(true)
+                      return
+                  }
+                  pendingRole = result
+                  startActivityForResult(rm.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), 2001)
+              }
+
+              private fun requestNotif(result: MethodChannel.Result) {
+                  if (Build.VERSION.SDK_INT < 33 || checkSelfPermission("android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED) {
+                      result.success(true)
+                  } else {
+                      pendingNotif = result
+                      requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1002)
+                  }
               }
 
               override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
                   super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+                  val ok = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
                   if (requestCode == 1001) {
-                      pending?.success(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)
-                      pending = null
+                      pendingLog?.success(ok)
+                      pendingLog = null
+                  }
+                  if (requestCode == 1002) {
+                      pendingNotif?.success(ok)
+                      pendingNotif = null
+                  }
+              }
+
+              override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+                  super.onActivityResult(requestCode, resultCode, data)
+                  if (requestCode == 2001) {
+                      pendingRole?.success(resultCode == Activity.RESULT_OK || roleHeld())
+                      pendingRole = null
                   }
               }
 
@@ -140,6 +211,83 @@ jobs:
                       }
                   }
                   return out
+              }
+          }
+          KOTLIN
+          cat > android/app/src/main/kotlin/com/example/call_guard/CallGuardScreeningService.kt << 'KOTLIN'
+          package com.example.call_guard
+
+          import android.annotation.TargetApi
+          import android.app.Notification
+          import android.app.NotificationChannel
+          import android.app.NotificationManager
+          import android.content.Context
+          import android.os.Build
+          import android.telecom.Call
+          import android.telecom.CallScreeningService
+          import android.telecom.CallScreeningService.CallResponse
+          import org.json.JSONArray
+
+          @TargetApi(29)
+          class CallGuardScreeningService : CallScreeningService() {
+
+              override fun onScreenCall(callDetails: Call.Details) {
+                  var response = CallResponse.Builder().build()
+                  try {
+                      if (callDetails.callDirection == Call.Details.DIRECTION_INCOMING) {
+                          val raw = callDetails.handle?.schemeSpecificPart ?: ""
+                          val digits = raw.filter { it.isDigit() }
+                          val n = if (digits.length > 10) digits.substring(digits.length - 10) else digits
+                          if (n.length == 10) {
+                              val label = findLabel(n)
+                              if (label != null) {
+                                  response = CallResponse.Builder()
+                                      .setDisallowCall(true)
+                                      .setRejectCall(true)
+                                      .setSkipNotification(true)
+                                      .build()
+                                  alert("Call block hua", "$n ($label) ko block kiya gaya")
+                              } else if (n.startsWith("140") || n.startsWith("160")) {
+                                  alert("Shak wala call", "$n telemarketing number ho sakta hai")
+                              }
+                          }
+                      }
+                  } catch (e: Exception) {
+                  }
+                  respondToCall(callDetails, response)
+              }
+
+              private fun findLabel(n: String): String? {
+                  val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                  val s = prefs.getString("flutter.blocked_v2", null) ?: return null
+                  val arr = JSONArray(s)
+                  for (i in 0 until arr.length()) {
+                      val o = arr.getJSONObject(i)
+                      if (o.optString("n") == n) return o.optString("l", "Spam")
+                  }
+                  return null
+              }
+
+              private fun alert(title: String, text: String) {
+                  try {
+                      val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                      if (Build.VERSION.SDK_INT >= 26) {
+                          nm.createNotificationChannel(
+                              NotificationChannel("callguard_alerts", "Call Guard alerts", NotificationManager.IMPORTANCE_HIGH)
+                          )
+                      }
+                      val b = if (Build.VERSION.SDK_INT >= 26) {
+                          Notification.Builder(this, "callguard_alerts")
+                      } else {
+                          Notification.Builder(this)
+                      }
+                      b.setSmallIcon(android.R.drawable.ic_dialog_alert)
+                      b.setContentTitle(title)
+                      b.setContentText(text)
+                      b.setAutoCancel(true)
+                      nm.notify((System.currentTimeMillis() % 100000).toInt(), b.build())
+                  } catch (e: Exception) {
+                  }
               }
           }
           KOTLIN
