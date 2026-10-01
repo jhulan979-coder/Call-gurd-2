@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare project files
+      - name: Prepare project filesfor f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page; do
         run: |
           mkdir -p lib
           for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab; do
