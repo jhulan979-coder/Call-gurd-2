@@ -1,384 +1,44 @@
-name: Build APK
+name: Build Flutter APK & ZIP
 
 on:
-  workflow_dispatch:
   push:
-    branches: [main]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-      - name: Prepare project files
-        run: |
-          mkdir -p lib
-          for f in main core tabs ai_tab calls_tab protect receptionist_tab; do
-            if [ ! -f lib/$f.dart ]; then
-              if [ -f $f.dart ]; then
-                cp $f.dart lib/$f.dart
-              elif [ -f .github/workflows/$f.dart ]; then
-                cp .github/workflows/$f.dart lib/$f.dart
-              fi
-            fi
-          done
-          test -f lib/main.dart || (echo "MAIN.DART NAHI MILI" && exit 1)
-          test -f lib/core.dart || (echo "CORE.DART NAHI MILI" && exit 1)
-          test -f lib/tabs.dart || (echo "TABS.DART NAHI MILI" && exit 1)
-          test -f lib/ai_tab.dart || (echo "AI_TAB.DART NAHI MILI" && exit 1)
-          test -f lib/calls_tab.dart || (echo "CALLS_TAB.DART NAHI MILI" && exit 1)
-          test -f lib/protect.dart || (echo "PROTECT.DART NAHI MILI" && exit 1)
-          test -f lib/receptionist_tab.dart || (echo "RECEPTIONIST_TAB.DART NAHI MILI" && exit 1)
-          sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'calls_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
-          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';#" lib/main.dart
-          sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CallsTab(),#" lib/main.dart
-          sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
-          sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.call_outlined), label: 'Calls'),#" lib/main.dart
-          sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),#" lib/main.dart
-          grep -q "calls_tab.dart" lib/main.dart || (echo "PATCH1 FAIL" && exit 1)
-          grep -q "const CallsTab()" lib/main.dart || (echo "PATCH2 FAIL" && exit 1)
-          grep -q "Icons.call_outlined" lib/main.dart || (echo "PATCH3 FAIL" && exit 1)
-          grep -q "const ProtectCard()" lib/main.dart || (echo "PATCH4 FAIL" && exit 1)
-          grep -q "protect.dart" lib/main.dart || (echo "PATCH5 FAIL" && exit 1)
-          grep -q "const AiHub()" lib/main.dart || (echo "PATCH6 FAIL" && exit 1)
-          grep -q "receptionist_tab.dart" lib/main.dart || (echo "PATCH7 FAIL" && exit 1)
-          if [ ! -f pubspec.yaml ]; then
-            cat > pubspec.yaml << 'EOF'
-          name: call_guard
-          description: Call Guard - spam number checker and block list.
-          publish_to: 'none'
-          version: 1.0.0+1
+    - name: Set up Java JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
 
-          environment:
-            sdk: '>=3.0.0 <4.0.0'
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.19.x'
+        channel: 'stable'
 
-          dependencies:
-            flutter:
-              sdk: flutter
-            shared_preferences: ^2.2.0
-            http: ^1.2.0
-            speech_to_text: ^7.0.0
-            flutter_tts: ^4.2.0
+    # Folder list check karne ke liye step
+    - name: Check directory contents
+      run: ls -la
 
-          flutter:
-            uses-material-design: true
-          EOF
-          fi
-          ls -la . lib
+    - name: Install Dependencies
+      run: flutter pub get
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+    - name: Build APK
+      run: flutter build apk --split-per-abi
 
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-
-      - name: Create Android project files
-        run: |
-          flutter create --platforms=android --project-name call_guard tmp_app
-          cp -r tmp_app/android android
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <application#' android/app/src/main/AndroidManifest.xml
-          if grep -q "<queries>" android/app/src/main/AndroidManifest.xml; then
-            sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' android/app/src/main/AndroidManifest.xml
-          else
-            sed -i 's#<application#<queries><intent><action android:name="android.speech.RecognitionService"/></intent><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>\n    <application#' android/app/src/main/AndroidManifest.xml
-          fi
-          sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    </application>#' android/app/src/main/AndroidManifest.xml
-          grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST PATCH FAIL" && exit 1)
-          grep -q "READ_CONTACTS" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST CONTACTS FAIL" && exit 1)
-          grep -q "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST AUDIO FAIL" && exit 1)
-          grep -q "RecognitionService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST QUERIES FAIL" && exit 1)
-
-      - name: Add native code
-        run: |
-          rm -f $(find android/app/src/main -name 'MainActivity.*')
-          mkdir -p android/app/src/main/kotlin/com/example/call_guard
-          cat > android/app/src/main/kotlin/com/example/call_guard/MainActivity.kt << 'KOTLIN'
-          package com.example.call_guard
-
-          import android.Manifest
-          import android.app.Activity
-          import android.app.role.RoleManager
-          import android.content.Context
-          import android.content.Intent
-          import android.content.pm.PackageManager
-          import android.net.Uri
-          import android.os.Build
-          import android.provider.CallLog
-          import android.provider.ContactsContract
-          import io.flutter.embedding.android.FlutterActivity
-          import io.flutter.embedding.engine.FlutterEngine
-          import io.flutter.plugin.common.MethodChannel
-
-          class MainActivity : FlutterActivity() {
-              private var pendingLog: MethodChannel.Result? = null
-              private var pendingRole: MethodChannel.Result? = null
-              private var pendingNotif: MethodChannel.Result? = null
-              private var pendingContacts: MethodChannel.Result? = null
-
-              override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-                  super.configureFlutterEngine(flutterEngine)
-                  MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "callguard/native")
-                      .setMethodCallHandler { call, result ->
-                          when (call.method) {
-                              "hasCallLogPermission" -> result.success(hasLogPerm() && (hasContactsPerm() || contactsAsked()))
-                              "requestCallLogPermission" -> {
-                                  if (hasLogPerm() && (hasContactsPerm() || contactsAsked())) {
-                                      result.success(true)
-                                  } else {
-                                      pendingLog = result
-                                      requestPermissions(arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS), 1001)
-                                  }
-                              }
-                              "getRecentCalls" -> result.success(readCalls())
-                              "hasContactsPermission" -> result.success(hasContactsPerm())
-                              "requestContactsPermission" -> {
-                                  if (hasContactsPerm()) {
-                                      result.success(true)
-                                  } else {
-                                      pendingContacts = result
-                                      requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), 1003)
-                                  }
-                              }
-                              "getContacts" -> result.success(readContacts())
-                              "isScreeningActive" -> result.success(roleHeld())
-                              "requestScreeningRole" -> {
-                                  if (Build.VERSION.SDK_INT >= 29) {
-                                      requestRole(result)
-                                  } else {
-                                      result.success(false)
-                                  }
-                              }
-                              "requestNotificationPermission" -> requestNotif(result)
-                              else -> result.notImplemented()
-                          }
-                      }
-              }
-
-              private fun hasLogPerm(): Boolean {
-                  return checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
-              }
-
-              private fun hasContactsPerm(): Boolean {
-                  return checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
-              }
-
-              private fun contactsAsked(): Boolean {
-                  return getSharedPreferences("cg_native", Context.MODE_PRIVATE).getBoolean("contacts_asked", false)
-              }
-
-              private fun roleHeld(): Boolean {
-                  if (Build.VERSION.SDK_INT < 29) return false
-                  return roleHeldApi29()
-              }
-
-              @android.annotation.TargetApi(29)
-              private fun roleHeldApi29(): Boolean {
-                  val rm = getSystemService(Context.ROLE_SERVICE) as RoleManager
-                  return rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING) && rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)
-              }
-
-              @android.annotation.TargetApi(29)
-              private fun requestRole(result: MethodChannel.Result) {
-                  val rm = getSystemService(Context.ROLE_SERVICE) as RoleManager
-                  if (!rm.isRoleAvailable(RoleManager.ROLE_CALL_SCREENING)) {
-                      result.success(false)
-                      return
-                  }
-                  if (rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING)) {
-                      result.success(true)
-                      return
-                  }
-                  pendingRole = result
-                  startActivityForResult(rm.createRequestRoleIntent(RoleManager.ROLE_CALL_SCREENING), 2001)
-              }
-
-              private fun requestNotif(result: MethodChannel.Result) {
-                  if (Build.VERSION.SDK_INT < 33 || checkSelfPermission("android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED) {
-                      result.success(true)
-                  } else {
-                      pendingNotif = result
-                      requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1002)
-                  }
-              }
-
-              override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-                  super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-                  if (requestCode == 1001) {
-                      getSharedPreferences("cg_native", Context.MODE_PRIVATE).edit().putBoolean("contacts_asked", true).apply()
-                      pendingLog?.success(hasLogPerm())
-                      pendingLog = null
-                  }
-                  if (requestCode == 1002) {
-                      val ok = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
-                      pendingNotif?.success(ok)
-                      pendingNotif = null
-                  }
-                  if (requestCode == 1003) {
-                      pendingContacts?.success(hasContactsPerm())
-                      pendingContacts = null
-                  }
-              }
-
-              override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-                  super.onActivityResult(requestCode, resultCode, data)
-                  if (requestCode == 2001) {
-                      pendingRole?.success(resultCode == Activity.RESULT_OK || roleHeld())
-                      pendingRole = null
-                  }
-              }
-
-              private fun lookupName(number: String?): String? {
-                  if (number.isNullOrEmpty() || !hasContactsPerm()) return null
-                  try {
-                      val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
-                      val c = contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)
-                      c?.use {
-                          if (it.moveToFirst()) return it.getString(0)
-                      }
-                  } catch (e: Exception) {
-                  }
-                  return null
-              }
-
-              private fun readContacts(): List<Map<String, Any?>> {
-                  val out = ArrayList<Map<String, Any?>>()
-                  if (!hasContactsPerm()) return out
-                  try {
-                      val cursor = contentResolver.query(
-                          ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                          arrayOf(
-                              ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                              ContactsContract.CommonDataKinds.Phone.NUMBER
-                          ),
-                          null, null,
-                          ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
-                      )
-                      cursor?.use {
-                          while (it.moveToNext()) {
-                              out.add(mapOf(
-                                  "name" to it.getString(0),
-                                  "number" to it.getString(1)
-                              ))
-                          }
-                      }
-                  } catch (e: Exception) {
-                  }
-                  return out
-              }
-
-              private fun readCalls(): List<Map<String, Any?>> {
-                  val out = ArrayList<Map<String, Any?>>()
-                  val cursor = contentResolver.query(
-                      CallLog.Calls.CONTENT_URI,
-                      arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.DATE, CallLog.Calls.TYPE),
-                      null, null, CallLog.Calls.DATE + " DESC"
-                  )
-                  cursor?.use {
-                      var count = 0
-                      while (it.moveToNext() && count < 100) {
-                          val number = it.getString(0)
-                          val cached = it.getString(1)
-                          val name = if (!cached.isNullOrEmpty()) cached else lookupName(number)
-                          out.add(mapOf(
-                              "number" to number,
-                              "name" to name,
-                              "date" to it.getLong(2),
-                              "type" to it.getInt(3)
-                          ))
-                          count++
-                      }
-                  }
-                  return out
-              }
-          }
-          KOTLIN
-          cat > android/app/src/main/kotlin/com/example/call_guard/CallGuardScreeningService.kt << 'KOTLIN'
-          package com.example.call_guard
-
-          import android.annotation.TargetApi
-          import android.app.Notification
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.content.Context
-          import android.os.Build
-          import android.telecom.Call
-          import android.telecom.CallScreeningService
-          import android.telecom.CallScreeningService.CallResponse
-          import org.json.JSONArray
-
-          @TargetApi(29)
-          class CallGuardScreeningService : CallScreeningService() {
-
-              override fun onScreenCall(callDetails: Call.Details) {
-                  var response = CallResponse.Builder().build()
-                  try {
-                      if (callDetails.callDirection == Call.Details.DIRECTION_INCOMING) {
-                          val raw = callDetails.handle?.schemeSpecificPart ?: ""
-                          val digits = raw.filter { it.isDigit() }
-                          val n = if (digits.length > 10) digits.substring(digits.length - 10) else digits
-                          if (n.length == 10) {
-                              val label = findLabel(n)
-                              if (label != null) {
-                                  response = CallResponse.Builder()
-                                      .setDisallowCall(true)
-                                      .setRejectCall(true)
-                                      .setSkipNotification(true)
-                                      .build()
-                                  alert("Call block hua", "$n ($label) ko block kiya gaya")
-                              } else if (n.startsWith("140") || n.startsWith("160")) {
-                                  alert("Shak wala call", "$n telemarketing number ho sakta hai")
-                              }
-                          }
-                      }
-                  } catch (e: Exception) {
-                  }
-                  respondToCall(callDetails, response)
-              }
-
-              private fun findLabel(n: String): String? {
-                  val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                  val s = prefs.getString("flutter.blocked_v2", null) ?: return null
-                  val arr = JSONArray(s)
-                  for (i in 0 until arr.length()) {
-                      val o = arr.getJSONObject(i)
-                      if (o.optString("n") == n) return o.optString("l", "Spam")
-                  }
-                  return null
-              }
-
-              private fun alert(title: String, text: String) {
-                  try {
-                      val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                      if (Build.VERSION.SDK_INT >= 26) {
-                          nm.createNotificationChannel(
-                              NotificationChannel("callguard_alerts", "Call Guard alerts", NotificationManager.IMPORTANCE_HIGH)
-                          )
-                      }
-                      val b = if (Build.VERSION.SDK_INT >= 26) {
-                          Notification.Builder(this, "callguard_alerts")
-                      } else {
-                          Notification.Builder(this)
-                      }
-                      b.setSmallIcon(android.R.drawable.ic_dialog_alert)
-                      b.setContentTitle(title)
-                      b.setContentText(text)
-                      b.setAutoCancel(true)
-                      nm.notify((System.currentTimeMillis() % 100000).toInt(), b.build())
-                  } catch (e: Exception) {
-                  }
-              }
-          }
-          KOTLIN
-
-      - run: flutter pub get
-
-      - run: flutter build apk --release
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: call-guard-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-apk
+        path: build/app/outputs/flutter-apk/*.apk
