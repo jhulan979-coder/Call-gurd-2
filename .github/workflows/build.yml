@@ -81,6 +81,7 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android android
+          sed -i 's#<application#<uses-permission android:name="android.permission.CALL_PHONE"/>\n    <application#' android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.READ_SMS"/>\n    <uses-permission android:name="android.permission.SEND_SMS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
           if grep -q "<queries>" android/app/src/main/AndroidManifest.xml; then
             sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' android/app/src/main/AndroidManifest.xml
