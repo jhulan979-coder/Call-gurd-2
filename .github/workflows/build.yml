@@ -14,7 +14,7 @@ jobs:
       - name: Prepare project files
         run: |
           mkdir -p lib
-          for f in main core tabs ai_tab calls_tab protect receptionist_tab; do
+          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab; do
             if [ ! -f lib/$f.dart ]; then
               if [ -f $f.dart ]; then
                 cp $f.dart lib/$f.dart
@@ -30,15 +30,16 @@ jobs:
           test -f lib/calls_tab.dart || (echo "CALLS_TAB.DART NAHI MILI" && exit 1)
           test -f lib/protect.dart || (echo "PROTECT.DART NAHI MILI" && exit 1)
           test -f lib/receptionist_tab.dart || (echo "RECEPTIONIST_TAB.DART NAHI MILI" && exit 1)
-          sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'calls_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
+          test -f lib/sms_tab.dart || (echo "SMS_TAB.DART NAHI MILI" && exit 1)
+          sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'sms_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';#" lib/main.dart
-          sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CallsTab(),#" lib/main.dart
+          sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CommHub(),#" lib/main.dart
           sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
-          sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.call_outlined), label: 'Calls'),#" lib/main.dart
+          sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.forum_outlined), label: 'Inbox'),#" lib/main.dart
           sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),#" lib/main.dart
-          grep -q "calls_tab.dart" lib/main.dart || (echo "PATCH1 FAIL" && exit 1)
-          grep -q "const CallsTab()" lib/main.dart || (echo "PATCH2 FAIL" && exit 1)
-          grep -q "Icons.call_outlined" lib/main.dart || (echo "PATCH3 FAIL" && exit 1)
+          grep -q "sms_tab.dart" lib/main.dart || (echo "PATCH1 FAIL" && exit 1)
+          grep -q "const CommHub()" lib/main.dart || (echo "PATCH2 FAIL" && exit 1)
+          grep -q "Icons.forum_outlined" lib/main.dart || (echo "PATCH3 FAIL" && exit 1)
           grep -q "const ProtectCard()" lib/main.dart || (echo "PATCH4 FAIL" && exit 1)
           grep -q "protect.dart" lib/main.dart || (echo "PATCH5 FAIL" && exit 1)
           grep -q "const AiHub()" lib/main.dart || (echo "PATCH6 FAIL" && exit 1)
@@ -80,7 +81,7 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android android
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.READ_SMS"/>\n    <uses-permission android:name="android.permission.SEND_SMS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
           if grep -q "<queries>" android/app/src/main/AndroidManifest.xml; then
             sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' android/app/src/main/AndroidManifest.xml
           else
@@ -91,6 +92,7 @@ jobs:
           grep -q "READ_CONTACTS" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST CONTACTS FAIL" && exit 1)
           grep -q "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST AUDIO FAIL" && exit 1)
           grep -q "RecognitionService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST QUERIES FAIL" && exit 1)
+          grep -q "SEND_SMS" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST SMS FAIL" && exit 1)
 
       - name: Add native code
         run: |
@@ -118,6 +120,8 @@ jobs:
               private var pendingRole: MethodChannel.Result? = null
               private var pendingNotif: MethodChannel.Result? = null
               private var pendingContacts: MethodChannel.Result? = null
+              private var pendingSms: MethodChannel.Result? = null
+              private var pendingSend: MethodChannel.Result? = null
 
               override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
                   super.configureFlutterEngine(flutterEngine)
@@ -144,6 +148,41 @@ jobs:
                                   }
                               }
                               "getContacts" -> result.success(readContacts())
+                              "hasSmsPermission" -> result.success(has(Manifest.permission.READ_SMS))
+                              "requestSmsPermission" -> {
+                                  if (has(Manifest.permission.READ_SMS)) {
+                                      result.success(true)
+                                  } else {
+                                      pendingSms = result
+                                      requestPermissions(arrayOf(Manifest.permission.READ_SMS), 1004)
+                                  }
+                              }
+                              "getSms" -> result.success(readSms())
+                              "hasSendSms" -> result.success(has(Manifest.permission.SEND_SMS))
+                              "requestSendSms" -> {
+                                  if (has(Manifest.permission.SEND_SMS)) {
+                                      result.success(true)
+                                  } else {
+                                      pendingSend = result
+                                      requestPermissions(arrayOf(Manifest.permission.SEND_SMS), 1005)
+                                  }
+                              }
+                              "setAutoSms" -> {
+                                  val enabled = call.argument<Boolean>("enabled") ?: false
+                                  val text = call.argument<String>("text") ?: ""
+                                  getSharedPreferences("cg_native", Context.MODE_PRIVATE).edit()
+                                      .putBoolean("auto_sms", enabled)
+                                      .putString("auto_sms_text", text)
+                                      .apply()
+                                  result.success(true)
+                              }
+                              "getAutoSms" -> {
+                                  val p = getSharedPreferences("cg_native", Context.MODE_PRIVATE)
+                                  result.success(mapOf(
+                                      "enabled" to p.getBoolean("auto_sms", false),
+                                      "text" to (p.getString("auto_sms_text", "") ?: "")
+                                  ))
+                              }
                               "isScreeningActive" -> result.success(roleHeld())
                               "requestScreeningRole" -> {
                                   if (Build.VERSION.SDK_INT >= 29) {
@@ -158,12 +197,16 @@ jobs:
                       }
               }
 
+              private fun has(p: String): Boolean {
+                  return checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED
+              }
+
               private fun hasLogPerm(): Boolean {
-                  return checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+                  return has(Manifest.permission.READ_CALL_LOG)
               }
 
               private fun hasContactsPerm(): Boolean {
-                  return checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+                  return has(Manifest.permission.READ_CONTACTS)
               }
 
               private fun contactsAsked(): Boolean {
@@ -197,7 +240,7 @@ jobs:
               }
 
               private fun requestNotif(result: MethodChannel.Result) {
-                  if (Build.VERSION.SDK_INT < 33 || checkSelfPermission("android.permission.POST_NOTIFICATIONS") == PackageManager.PERMISSION_GRANTED) {
+                  if (Build.VERSION.SDK_INT < 33 || has("android.permission.POST_NOTIFICATIONS")) {
                       result.success(true)
                   } else {
                       pendingNotif = result
@@ -220,6 +263,14 @@ jobs:
                   if (requestCode == 1003) {
                       pendingContacts?.success(hasContactsPerm())
                       pendingContacts = null
+                  }
+                  if (requestCode == 1004) {
+                      pendingSms?.success(has(Manifest.permission.READ_SMS))
+                      pendingSms = null
+                  }
+                  if (requestCode == 1005) {
+                      pendingSend?.success(has(Manifest.permission.SEND_SMS))
+                      pendingSend = null
                   }
               }
 
@@ -263,6 +314,31 @@ jobs:
                                   "name" to it.getString(0),
                                   "number" to it.getString(1)
                               ))
+                          }
+                      }
+                  } catch (e: Exception) {
+                  }
+                  return out
+              }
+
+              private fun readSms(): List<Map<String, Any?>> {
+                  val out = ArrayList<Map<String, Any?>>()
+                  if (!has(Manifest.permission.READ_SMS)) return out
+                  try {
+                      val cursor = contentResolver.query(
+                          android.provider.Telephony.Sms.Inbox.CONTENT_URI,
+                          arrayOf("address", "body", "date"),
+                          null, null, "date DESC"
+                      )
+                      cursor?.use {
+                          var count = 0
+                          while (it.moveToNext() && count < 150) {
+                              out.add(mapOf(
+                                  "address" to (it.getString(0) ?: ""),
+                                  "body" to (it.getString(1) ?: ""),
+                                  "date" to it.getLong(2)
+                              ))
+                              count++
                           }
                       }
                   } catch (e: Exception) {
@@ -334,6 +410,7 @@ jobs:
                                   .setSkipNotification(true)
                                   .build()
                               show("callguard_alerts", "Call Guard alerts", "Call block hua", "$shown ($label) ko block kiya gaya")
+                              sendAutoSms(n, raw)
                           } else {
                               val status = if (n.startsWith("140") || n.startsWith("160")) {
                                   "Shak: telemarketing number"
@@ -350,6 +427,26 @@ jobs:
                   } catch (e: Exception) {
                   }
                   respondToCall(callDetails, response)
+              }
+
+              @Suppress("DEPRECATION")
+              private fun sendAutoSms(n: String, raw: String) {
+                  try {
+                      if (n.length != 10 || raw.isEmpty()) return
+                      val p = getSharedPreferences("cg_native", Context.MODE_PRIVATE)
+                      if (!p.getBoolean("auto_sms", false)) return
+                      if (checkSelfPermission(Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) return
+                      val text = p.getString("auto_sms_text", "") ?: ""
+                      if (text.isEmpty()) return
+                      val now = System.currentTimeMillis()
+                      val key = "sms_last_" + n
+                      if (now - p.getLong(key, 0L) < 24L * 60L * 60L * 1000L) return
+                      val sms = android.telephony.SmsManager.getDefault()
+                      val parts = sms.divideMessage(text)
+                      sms.sendMultipartTextMessage(raw, null, parts, null, null)
+                      p.edit().putLong(key, now).apply()
+                  } catch (e: Exception) {
+                  }
               }
 
               private fun findName(d: Call.Details, raw: String): String? {
