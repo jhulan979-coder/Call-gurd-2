@@ -67,7 +67,17 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        title: const Text('Call Guard'),appBar: AppBar(
         title: const Text('Call Guard'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            ),
+          ),
+          PopupMenuButton<String>(
         actions: [
           PopupMenuButton<String>(
             onSelected: (v) {
