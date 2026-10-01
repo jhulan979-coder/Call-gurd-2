@@ -271,9 +271,7 @@ class _CallsTabState extends State<CallsTab> {
         );
       },
     );
-  }
-
-  Widget _contactsView() {
+  }Widget _contactsView() {
     if (_cLoading) return const Center(child: CircularProgressIndicator());
     if (!_cGranted) {
       return Center(
@@ -308,8 +306,8 @@ class _CallsTabState extends State<CallsTab> {
             ],
           ),
         ),
-      )
-}
+      );
+    }
     final q = _query.toLowerCase();
     final shown = _contacts
         .where((c) =>
