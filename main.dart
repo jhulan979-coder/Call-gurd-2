@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'core.dart';
 import 'tabs.dart';
-import 'settings_page.dart';
 import 'ai_tab.dart';
+import 'settings_page.dart';
 
 void main() => runApp(const CallGuardApp());
 
@@ -67,7 +67,6 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Call Guard'),appBar: AppBar(
         title: const Text('Call Guard'),
         actions: [
           IconButton(
@@ -77,8 +76,6 @@ class _HomePageState extends State<HomePage> {
               MaterialPageRoute(builder: (_) => const SettingsPage()),
             ),
           ),
-          PopupMenuButton<String>(
-        actions: [
           PopupMenuButton<String>(
             onSelected: (v) {
               if (v == 'clear') _confirmClear();
