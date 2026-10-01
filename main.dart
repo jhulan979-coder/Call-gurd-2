@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'core.dart';
 import 'tabs.dart';
 import 'ai_tab.dart';
+import 'calls_tab.dart';
 
 void main() => runApp(const CallGuardApp());
 
@@ -16,11 +19,11 @@ class CallGuardApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
       theme: ThemeData(
-          colorSchemeSeed: Colors.teal,
+          colorSchemeSeed: Colors.blue,
           useMaterial3: true,
           brightness: Brightness.light),
       darkTheme: ThemeData(
-          colorSchemeSeed: Colors.teal,
+          colorSchemeSeed: Colors.blue,
           useMaterial3: true,
           brightness: Brightness.dark),
       home: const HomePage(),
@@ -172,39 +175,76 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
-}
-
-class StatCard extends StatelessWidget {
+}class HomeStat extends StatelessWidget {
   final IconData icon;
   final String value;
   final String label;
-  final VoidCallback onTap;
-  const StatCard(
+  final Color color;
+  const HomeStat(
       {super.key,
       required this.icon,
       required this.value,
+      required this.label,
+      required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 30),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(value,
+                  style: TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+              Text(label, style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class HomeBtn extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const HomeBtn(
+      {super.key,
+      required this.icon,
       required this.label,
       required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final cs = Theme.of(context).colorScheme;
+    return Expanded(
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
             children: [
-              Icon(icon),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(value, style: Theme.of(context).textTheme.headlineSmall),
-                  Text(label),
-                ],
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                    color: cs.primaryContainer, shape: BoxShape.circle),
+                child: Icon(icon, color: cs.primary, size: 28),
               ),
+              const SizedBox(height: 6),
+              Text(label, style: const TextStyle(fontSize: 12)),
             ],
           ),
         ),
@@ -213,16 +253,69 @@ class StatCard extends StatelessWidget {
   }
 }
 
-class HomeTab extends StatelessWidget {
+const _hn = MethodChannel('callguard/native');
+
+class HomeTab extends StatefulWidget {
   final void Function(int) onGo;
   const HomeTab({super.key, required this.onGo});
 
-  static const tips = [
-    'OTP, PIN ya CVV kisi ko kabhi mat batao, chahe bank ka naam le.',
-    'Lottery ya inaam ka call hamesha fraud hota hai.',
-    'Unknown link ya APK file kabhi install mat karo.',
-    'Shak ho to call kaato aur bank ke official number par khud call karo.',
-  ];
+  @override
+  State<HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<HomeTab> {
+  List<CallItem> _calls = [];
+  bool _ok = true;
+  bool _busy = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _busy = true);
+    try {
+      final has =
+          await _hn.invokeMethod<bool>('hasCallLogPermission') ?? false;
+      _ok = has;
+      if (has) {
+        final raw =
+            await _hn.invokeMethod<List<dynamic>>('getRecentCalls') ?? [];
+        final list = <CallItem>[];
+        for (final r in raw) {
+          final m = Map<String, dynamic>.from(r as Map);
+          final n = last10((m['number'] ?? '') as String);
+          if (n.length < 10) continue;
+          list.add(CallItem(n, (m['name'] ?? '') as String,
+              (m['date'] ?? 0) as int, (m['type'] ?? 0) as int));
+        }
+        _calls = list;
+      }
+    } catch (e) {
+      _ok = false;
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _ask() async {
+    try {
+      await _hn.invokeMethod<bool>('requestCallLogPermission');
+    } catch (e) {}
+    await _load();
+  }
+
+  bool _isSpam(CallItem c) =>
+      store.findBlocked(c.number) != null ||
+      c.number.startsWith('140') ||
+      c.number.startsWith('160');
+
+  bool _isToday(int ms) {
+    final d = DateTime.fromMillisecondsSinceEpoch(ms);
+    final n = DateTime.now();
+    return d.year == n.year && d.month == n.month && d.day == n.day;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -230,80 +323,165 @@ class HomeTab extends StatelessWidget {
       listenable: store,
       builder: (context, _) {
         final cs = Theme.of(context).colorScheme;
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Card(
-              color: cs.primaryContainer,
-              child: Padding(
+        final today = _calls.where((c) => _isToday(c.date)).toList();
+        final blockedToday =
+            today.where((c) => store.findBlocked(c.number) != null).length;
+        final alertsToday = today.where(_isSpam).length;
+        return RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Container(
                 padding: const EdgeInsets.all(20),
-                child: Row(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                      colors: [Color(0xFF1565C0), Color(0xFF42A5F5)]),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
                   children: [
-                    Icon(Icons.shield, size: 44, color: cs.primary),
-                    const SizedBox(width: 16),
-                    const Expanded(
+                    Icon(Icons.shield, size: 48, color: Colors.white),
+                    SizedBox(width: 16),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Aap surakshit rahein',
+                          Text('Call Guard',
                               style: TextStyle(
-                                  fontSize: 20, fontWeight: FontWeight.bold)),
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold)),
                           SizedBox(height: 4),
-                          Text('Unknown number ko pehle check karo, phir call uthao.'),
+                          Text('Aap surakshit hain',
+                              style: TextStyle(color: Colors.white70)),
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: StatCard(
-                    icon: Icons.block,
-                    value: '${store.blocked.length}',
-                    label: 'Blocked',
-                    onTap: () => onGo(2),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: HomeStat(
+                        icon: Icons.block,
+                        value: '$blockedToday',
+                        label: 'Aaj blocked',
+                        color: Colors.red),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: StatCard(
-                    icon: Icons.search,
-                    value: '${store.history.length}',
-                    label: 'Checks',
-                    onTap: () => onGo(1),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: HomeStat(
+                        icon: Icons.warning_amber_rounded,
+                        value: '$alertsToday',
+                        label: 'Spam alerts',
+                        color: Colors.red),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text('Aakhri checks', style: Theme.of(context).textTheme.titleMedium),
-            if (store.history.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('Abhi koi check nahi hua'),
+                ],
               ),
-            ...store.history.take(5).map((e) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.history),
-                  title: Text(e.number),
-                  subtitle: Text(e.label),
-                  trailing: Text(timeAgo(e.ts)),
-                )),
-            const SizedBox(height: 16),
-            Text('Safety tips', style: Theme.of(context).textTheme.titleMedium),
-            ...tips.map((t) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                  leading: const Icon(Icons.tips_and_updates_outlined),
-                  title: Text(t),
-                )),
-            const SizedBox(height: 16),
-            const Center(child: Text('Call Guard v2', style: TextStyle(fontSize: 12))),
-          ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  HomeBtn(
+                      icon: Icons.search,
+                      label: 'Check',
+                      onTap: () => widget.onGo(1)),
+                  HomeBtn(
+                      icon: Icons.block,
+                      label: 'Block',
+                      onTap: () => widget.onGo(2)),
+                  HomeBtn(
+                      icon: Icons.call,
+                      label: 'Call',
+                      onTap: () => launchUrl(Uri.parse('tel:'))),
+                  HomeBtn(
+                      icon: Icons.settings,
+                      label: 'Settings',
+                      onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const SettingsPage()),
+                          )),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Recent calls',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w600)),
+                  ),
+                  IconButton(
+                      onPressed: _load, icon: const Icon(Icons.refresh)),
+                ],
+              ),
+              if (!_ok)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        const Text(
+                            'Recent calls dekhne ke liye call log ki permission do.',
+                            textAlign: TextAlign.center),
+                        const SizedBox(height: 10),
+                        FilledButton(
+                            onPressed: _ask,
+                            child: const Text('Permission do')),
+                      ],
+                    ),
+                  ),
+                ),
+              if (_ok && _busy)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              if (_ok && !_busy && _calls.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(child: Text('Koi recent call nahi mili')),
+                ),
+              ...(_calls.take(8).map((c) {
+                final spam = _isSpam(c);
+                final label = store.findBlocked(c.number)?.label;
+                final tag = label != null ? ' - $label' : '';
+                return Card(
+                  color: spam ? Colors.red.withOpacity(0.08) : null,
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: spam
+                          ? Colors.red.withOpacity(0.15)
+                          : cs.primaryContainer,
+                      child: Icon(
+                          spam ? Icons.warning_amber_rounded : Icons.call,
+                          color: spam ? Colors.red : cs.primary),
+                    ),
+                    title: Text(
+                      c.name.isNotEmpty ? c.name : c.number,
+                      style: TextStyle(
+                          color: spam ? Colors.red : null,
+                          fontWeight: spam ? FontWeight.bold : null),
+                    ),
+                    subtitle: Text(
+                        spam ? 'SPAM$tag  |  ${c.number}' : c.number),
+                    trailing: Text(timeAgo(c.date)),
+                    onTap: () => showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => CallSheet(item: c),
+                    ),
+                  ),
+                );
+              })),
+              const SizedBox(height: 16),
+              const Center(
+                  child: Text('Call Guard v2', style: TextStyle(fontSize: 12))),
+            ],
+          ),
         );
       },
     );
