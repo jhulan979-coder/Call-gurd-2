@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'core.dart';
 import 'tabs.dart';
+import 'settings_page.dart';
 import 'ai_tab.dart';
 
 void main() => runApp(const CallGuardApp());
