@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.Bundle
 import android.telecom.Call
 import android.telecom.CallAudioState
+import android.telecom.PhoneAccountHandle
+import android.telecom.TelecomManager
 import android.telecom.VideoProfile
 import android.view.Gravity
 import android.view.View
@@ -14,6 +16,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import org.json.JSONArray
 
 class InCallActivity : Activity() {
@@ -128,7 +131,25 @@ class InCallActivity : Activity() {
         } catch (e: Exception) {
         }
         return null
-    }private fun refresh() {
+    }private fun accountList(c: Call): List<PhoneAccountHandle> {
+        val out = ArrayList<PhoneAccountHandle>()
+        try {
+            val ex = c.details.extras
+            val l = ex?.getParcelableArrayList<PhoneAccountHandle>("selectPhoneAccountAccounts")
+            if (l != null) out.addAll(l)
+        } catch (e: Throwable) {
+        }
+        if (out.isEmpty()) {
+            try {
+                val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                out.addAll(tm.callCapablePhoneAccounts)
+            } catch (e: Throwable) {
+            }
+        }
+        return out
+    }
+
+    private fun refresh() {
         val c = CallHolder.call
         if (c == null) {
             finish()
@@ -136,6 +157,17 @@ class InCallActivity : Activity() {
         }
         val state = c.state
         if (state == Call.STATE_DISCONNECTED) {
+            try {
+                val cause = c.details.disconnectCause
+                if (cause != null && cause.code != 2 && cause.code != 3 && cause.code != 4) {
+                    Toast.makeText(
+                        applicationContext,
+                        "Call nahi lagi: code " + cause.code + " " + (cause.reason ?: ""),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (e: Throwable) {
+            }
             finish()
             return
         }
@@ -150,9 +182,11 @@ class InCallActivity : Activity() {
             Call.STATE_DIALING, Call.STATE_CONNECTING -> "Calling..."
             Call.STATE_ACTIVE -> "Connected"
             Call.STATE_HOLDING -> "On hold"
-            else -> ""
+            Call.STATE_SELECT_PHONE_ACCOUNT -> "SIM chuno"
+            else -> "State"
         }
-        stateView?.text = if (tag != null) base + "  |  SPAM - " + tag else base
+        val shown = if (tag != null) base + "  |  SPAM - " + tag else base
+        stateView?.text = shown + "  [" + state + "]"
 
         val r = row
         if (r != null) {
@@ -163,6 +197,17 @@ class InCallActivity : Activity() {
                 })
                 r.addView(btn("Reject", "#C62828") {
                     c.reject(false, null)
+                })
+            } else if (state == Call.STATE_SELECT_PHONE_ACCOUNT) {
+                var i = 0
+                for (h in accountList(c)) {
+                    i++
+                    r.addView(btn("SIM " + i, "#1565C0") {
+                        c.phoneAccountSelected(h, false)
+                    })
+                }
+                r.addView(btn("Cancel", "#C62828") {
+                    c.disconnect()
                 })
             } else {
                 r.addView(btn(if (muted) "Unmute" else "Mute", "#37474F") {
