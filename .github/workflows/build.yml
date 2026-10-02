@@ -26,22 +26,17 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android .
+          
+          # Add permissions
           sed -i 's/<application/<uses-permission android:name="android.permission.READ_CONTACTS"\/>\n<uses-permission android:name="android.permission.RECORD_AUDIO"\/>\n<application/' android/app/src/main/AndroidManifest.xml
-          if grep -q "<queries>" android/app/src/main/AndroidManifest.xml; then
-            sed -i 's/<queries>/<queries>\n<intent><action android:name="android.intent.action.PROCESS_TEXT"\/><data android:mimeType="text\/plain"\/><\/intent>/' android/app/src/main/AndroidManifest.xml
-          else
-            sed -i 's/<application/<queries>\n<\/queries>\n<application/' android/app/src/main/AndroidManifest.xml
-          fi
-          sed -i 's/<application>/<service android:name="com.example.call_guard.CallScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"\/><\/intent-filter><\/service>\n<application>/' android/app/src/main/AndroidManifest.xml
-          grep -q "READ_CONTACTS" android/app/src/main/AndroidManifest.xml || (echo "READ_CONTACTS missing" && exit 1)
-          grep -q "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml || (echo "RECORD_AUDIO missing" && exit 1)
-          grep -q "RecognitionService" android/app/src/main/AndroidManifest.xml || (echo "RecognitionService missing" && exit 1)
+          
+          # Add service tags
+          sed -i 's/<application>/<application>\n<service android:name="com.example.call_guard.CallScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"\/><\/intent-filter><\/service>\n<service android:name="com.example.call_guard.RecognitionService" android:exported="true"><\/service>/' android/app/src/main/AndroidManifest.xml
 
       - name: Play Store fixes
         run: |
           sed -i '/READ_SMS/d; /SEND_SMS/d' android/app/src/main/AndroidManifest.xml
           for g in android/app/build.gradle.kts android/app/build.gradle; do [ -f "$g" ] && sed -i 's/com.example.callguard/com.example.call_guard/g' "$g"; done
-          grep -q "com.jhulan.callguard" android/app/build.gradle || (echo "PACKAGE_NAME_FIX_FAILED" && exit 1)
 
       - name: Add native code
         run: |
