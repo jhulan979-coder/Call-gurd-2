@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -51,6 +52,14 @@ class _SettingsPageState extends State<SettingsPage> {
               (x) => setState(() => smsSpam = x)),
           _tile('Auto SMS reply to blocked callers', autoReply, 'autoReply',
               (x) => setState(() => autoReply = x)),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.share),
+            title: const Text('Dosto ko share karo'),
+            onTap: () => Share.share(
+              'Call Guard try karo: spam calls block karo aur unknown number check karo!\nDownload: APP_LINK_YAHAN',
+            ),
+          ),
         ]),
       );
 }
