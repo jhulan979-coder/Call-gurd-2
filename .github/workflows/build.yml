@@ -21,23 +21,15 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-
       - name: Create Android project files
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android .
-          
-          # Add permissions
           sed -i 's/<application/<uses-permission android:name="android.permission.READ_CONTACTS"\/>\n<uses-permission android:name="android.permission.RECORD_AUDIO"\/>\n<application/' android/app/src/main/AndroidManifest.xml
-          
-          # Add service tags
-          sed -i 's/<application>/<application>\n<service android:name="com.example.call_guard.CallScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"\/><\/intent-filter><\/service>\n<service android:name="com.example.call_guard.RecognitionService" android:exported="true"><\/service>/' android/app/src/main/AndroidManifest.xml
 
       - name: Play Store fixes
         run: |
           sed -i '/READ_SMS/d; /SEND_SMS/d' android/app/src/main/AndroidManifest.xml
-          for g in android/app/build.gradle.kts android/app/build.gradle; do [ -f "$g" ] && sed -i 's/com.example.callguard/com.example.call_guard/g' "$g"; done
-
       - name: Add native code
         run: |
           rm -rf $(find android/app/src/main -name "MainActivity.*")
@@ -45,7 +37,7 @@ jobs:
           cat > android/app/src/main/kotlin/com/example/call_guard/MainActivity.kt << 'EOF'
           package com.example.call_guard
 
-          import android.manifest
+          import android.Manifest
           import android.app.Activity
           import android.app.role.RoleManager
           import android.content.Context
