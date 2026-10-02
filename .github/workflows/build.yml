@@ -15,7 +15,7 @@ jobs:
         run: |
           mkdir -p lib
           for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab; do
-            cp $f.dart lib/$f.dart
+            if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
           test -f native/MainActivity.kt || { echo "MAINACTIVITY NAHI MILI"; exit 1; }
