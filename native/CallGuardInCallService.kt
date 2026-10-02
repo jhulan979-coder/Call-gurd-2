@@ -80,13 +80,16 @@ class CallGuardInCallService : InCallService() {
 
     private val flip = object : SensorEventListener {
         override fun onSensorChanged(e: SensorEvent) {
-            if (e.values.size > 2 && e.values[2] < -7.0f) {
+            if (e.values.size > 2 && e.values[2] < -6.0f) {
+                stopFlip()
+                var ok = true
                 try {
                     val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
                     tm.silenceRinger()
                 } catch (x: Throwable) {
+                    ok = false
                 }
-                stopFlip()
+                speak(if (ok) "Silenced" else "Silence failed")
             }
         }
 
