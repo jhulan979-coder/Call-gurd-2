@@ -11,15 +11,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare Dart files
+      - name: Prepare files
         run: |
-          mkdir -p lib
+          mkdir -p lib native
           for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab; do
             if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
+          for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity; do
+            [ -f native/$k.kt ] || cp $k.kt native/$k.kt || cp .github/workflows/$k.kt native/$k.kt || { echo "$k.kt NAHI MILI"; exit 1; }
+          done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
-          test -f native/MainActivity.kt || { echo "MAINACTIVITY NAHI MILI"; exit 1; }
-          test -f native/CallGuardScreeningService.kt || { echo "SCREENING NAHI MILI"; exit 1; }
           sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'sms_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';#" lib/main.dart
           sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CommHub(),#" lib/main.dart
@@ -43,15 +44,18 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android android
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CALL_PHONE"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CALL_PHONE"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>\n    <application#' android/app/src/main/AndroidManifest.xml
           if grep -q "<queries>" android/app/src/main/AndroidManifest.xml; then
             sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' android/app/src/main/AndroidManifest.xml
           else
             sed -i 's#<application#<queries><intent><action android:name="android.speech.RecognitionService"/></intent><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>\n    <application#' android/app/src/main/AndroidManifest.xml
           fi
-          sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    </application>#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#</activity>#    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/><data android:scheme="tel"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="tel"/></intent-filter>\n    </activity>#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    <service android:name="com.example.call_guard.CallGuardInCallService" android:permission="android.permission.BIND_INCALL_SERVICE" android:exported="true"><meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true"/><intent-filter><action android:name="android.telecom.InCallService"/></intent-filter></service>\n    <activity android:name="com.example.call_guard.InCallActivity" android:exported="false" android:launchMode="singleInstance" android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>\n    </application>#' android/app/src/main/AndroidManifest.xml
           for g in android/app/build.gradle.kts android/app/build.gradle; do [ -f $g ] && sed -i 's/applicationId .*/applicationId = "com.jhulan.callguard"/' $g; done
-          grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST SERVICE FAIL"; exit 1; }
+          grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST SCREENING FAIL"; exit 1; }
+          grep -q "CallGuardInCallService" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST INCALL FAIL"; exit 1; }
+          grep -q "android.intent.action.DIAL" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST DIAL FAIL"; exit 1; }
           grep -q "READ_CALL_LOG" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST CALLLOG FAIL"; exit 1; }
           grep -q "com.jhulan.callguard" android/app/build.gradle* || { echo "PACKAGE RENAME FAIL"; exit 1; }
 
@@ -60,6 +64,16 @@ jobs:
           rm -f $(find android/app/src/main -name 'MainActivity.*')
           mkdir -p android/app/src/main/kotlin/com/example/call_guard
           cp native/*.kt android/app/src/main/kotlin/com/example/call_guard/
+
+      - name: Fixed signing key
+        run: |
+          if [ -f signing/debug.b64 ]; then
+            mkdir -p ~/.android
+            base64 -d signing/debug.b64 > ~/.android/debug.keystore
+            echo "FIXED KEY LAGA"
+          else
+            echo "SIGNING KEY NAHI MILI"
+          fi
 
       - run: flutter pub get
 
