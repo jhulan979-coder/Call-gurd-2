@@ -16,7 +16,7 @@ dependencies:
   url_launcher: ^6.2.0
   flutter_phone_direct_caller: ^2.1.1
   
-flutter_phone_direct_caller: ^2.1.1
+  flutter_phone_direct_caller: ^2.1.1
   share_plus: ^10.0.0
 flutter:
   uses-material-design: true
