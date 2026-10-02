@@ -144,7 +144,7 @@ class InCallActivity : Activity() {
         val tag = spamLabel(num)
         nameView?.text = CallHolder.label(this, c)
         nameView?.setTextColor(if (tag != null) Color.parseColor("#FF5252") else Color.WHITE)
-        numView?.text = numView?.text = CallHolder.where(raw)
+        numView?.text = raw
         val base = when (state) {
             Call.STATE_RINGING -> "Incoming call"
             Call.STATE_DIALING, Call.STATE_CONNECTING -> "Calling..."
