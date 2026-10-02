@@ -59,6 +59,13 @@ jobs:
           grep -q "READ_CALL_LOG" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST CALLLOG FAIL"; exit 1; }
           grep -q "com.jhulan.callguard" android/app/build.gradle* || { echo "PACKAGE RENAME FAIL"; exit 1; }
 
+      - name: Add phone number library
+        run: |
+          for g in android/app/build.gradle.kts android/app/build.gradle; do
+            [ -f $g ] && printf '\ndependencies {\n    implementation("com.googlecode.libphonenumber:libphonenumber:9.0.23")\n    implementation("com.googlecode.libphonenumber:geocoder:3.23")\n}\n' >> $g
+          done
+          grep -q "geocoder" android/app/build.gradle* || { echo "GEOCODER ADD FAIL"; exit 1; }
+
       - name: Add native code
         run: |
           rm -f $(find android/app/src/main -name 'MainActivity.*')
