@@ -94,8 +94,7 @@ jobs:
           grep -q "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST AUDIO FAIL" && exit 1)
           grep -q "RecognitionService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST QUERIES FAIL" && exit 1)
           grep -q "SEND_SMS" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST SMS FAIL" && exit 1)
-- name: Play Store fixes
-        run: |
+      - name: Play Store fixes        run: |
           sed -i '/READ_SMS/d;/SEND_SMS/d' android/app/src/main/AndroidManifest.xml
           for g in android/app/build.gradle.kts android/app/build.gradle; do [ -f $g ] && sed -i 's/applicationId .*/applicationId = "com.jhulan.callguard"/' $g; done
           grep -q "com.jhulan.callguard" android/app/build.gradle* || (echo "PACKAGE RENAME FAIL" && exit 1)
@@ -109,7 +108,7 @@ jobs:
           import android.Manifest
           import android.app.Activity
           import android.app.role.RoleManager
-          import android.content.Context
+          import android.content.Context.  
           import android.content.Intent
           import android.content.pm.PackageManager
           import android.net.Uri
