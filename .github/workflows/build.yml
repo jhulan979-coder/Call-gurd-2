@@ -11,62 +11,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare project files
+      - name: Prepare Dart files
         run: |
           mkdir -p lib
           for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab; do
-            if [ ! -f lib/$f.dart ]; then
-              if [ -f $f.dart ]; then
-                cp $f.dart lib/$f.dart
-              elif [ -f .github/workflows/$f.dart ]; then
-                cp .github/workflows/$f.dart lib/$f.dart
-              fi
-            fi
+            cp $f.dart lib/$f.dart
           done
-          test -f lib/main.dart || (echo "MAIN.DART NAHI MILI" && exit 1)
-          test -f lib/core.dart || (echo "CORE.DART NAHI MILI" && exit 1)
-          test -f lib/tabs.dart || (echo "TABS.DART NAHI MILI" && exit 1)
-          test -f lib/ai_tab.dart || (echo "AI_TAB.DART NAHI MILI" && exit 1)
-          test -f lib/calls_tab.dart || (echo "CALLS_TAB.DART NAHI MILI" && exit 1)
-          test -f lib/protect.dart || (echo "PROTECT.DART NAHI MILI" && exit 1)
-          test -f lib/receptionist_tab.dart || (echo "RECEPTIONIST_TAB.DART NAHI MILI" && exit 1)
-          test -f lib/sms_tab.dart || (echo "SMS_TAB.DART NAHI MILI" && exit 1)
+          test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
+          test -f native/MainActivity.kt || { echo "MAINACTIVITY NAHI MILI"; exit 1; }
+          test -f native/CallGuardScreeningService.kt || { echo "SCREENING NAHI MILI"; exit 1; }
           sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'sms_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';#" lib/main.dart
           sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CommHub(),#" lib/main.dart
           sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
           sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.forum_outlined), label: 'Inbox'),#" lib/main.dart
           sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),#" lib/main.dart
-          grep -q "sms_tab.dart" lib/main.dart || (echo "PATCH1 FAIL" && exit 1)
-          grep -q "const CommHub()" lib/main.dart || (echo "PATCH2 FAIL" && exit 1)
-          grep -q "Icons.forum_outlined" lib/main.dart || (echo "PATCH3 FAIL" && exit 1)
-          grep -q "const ProtectCard()" lib/main.dart || (echo "PATCH4 FAIL" && exit 1)
-          grep -q "protect.dart" lib/main.dart || (echo "PATCH5 FAIL" && exit 1)
-          grep -q "const AiHub()" lib/main.dart || (echo "PATCH6 FAIL" && exit 1)
-          grep -q "receptionist_tab.dart" lib/main.dart || (echo "PATCH7 FAIL" && exit 1)
-          if [ ! -f pubspec.yaml ]; then
-            cat > pubspec.yaml << 'EOF'
-          name: call_guard
-          description: Call Guard - spam number checker and block list.
-          publish_to: 'none'
-          version: 1.0.0+1
-
-          environment:
-            sdk: '>=3.0.0 <4.0.0'
-
-          dependencies:
-            flutter:
-              sdk: flutter
-            shared_preferences: ^2.2.0
-            http: ^1.2.0
-            speech_to_text: ^7.0.0
-            flutter_tts: ^4.2.0
-
-          flutter:
-            uses-material-design: true
-          EOF
-          fi
-          ls -la . lib
+          for k in "sms_tab.dart" "const CommHub()" "Icons.forum_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "receptionist_tab.dart"; do
+            grep -q "$k" lib/main.dart || { echo "PATCH FAIL: $k"; exit 1; }
+          done
 
       - uses: actions/setup-java@v4
         with:
@@ -81,333 +43,29 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android android
-          sed -i 's#<application#<uses-permission android:name="android.permission.CALL_PHONE"/>\n    <application#' android/app/src/main/AndroidManifest.xml
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.READ_SMS"/>\n    <uses-permission android:name="android.permission.SEND_SMS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CALL_PHONE"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <application#' android/app/src/main/AndroidManifest.xml
           if grep -q "<queries>" android/app/src/main/AndroidManifest.xml; then
             sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' android/app/src/main/AndroidManifest.xml
           else
             sed -i 's#<application#<queries><intent><action android:name="android.speech.RecognitionService"/></intent><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>\n    <application#' android/app/src/main/AndroidManifest.xml
           fi
           sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    </application>#' android/app/src/main/AndroidManifest.xml
-          grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST PATCH FAIL" && exit 1)
-          grep -q "READ_CONTACTS" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST CONTACTS FAIL" && exit 1)
-          grep -q "RECORD_AUDIO" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST AUDIO FAIL" && exit 1)
-          grep -q "RecognitionService" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST QUERIES FAIL" && exit 1)
-          grep -q "SEND_SMS" android/app/src/main/AndroidManifest.xml || (echo "MANIFEST SMS FAIL" && exit 1)
-
-      - name: Play Store fixes
-        run: |
-          sed -i '/READ_SMS/d;/SEND_SMS/d' android/app/src/main/AndroidManifest.xml
           for g in android/app/build.gradle.kts android/app/build.gradle; do [ -f $g ] && sed -i 's/applicationId .*/applicationId = "com.jhulan.callguard"/' $g; done
-          grep -q "com.jhulan.callguard" android/app/build.gradle* || (echo "PACKAGE RENAME FAIL" && exit 1)
+          grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST SERVICE FAIL"; exit 1; }
+          grep -q "READ_CALL_LOG" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST CALLLOG FAIL"; exit 1; }
+          grep -q "com.jhulan.callguard" android/app/build.gradle* || { echo "PACKAGE RENAME FAIL"; exit 1; }
 
-      - name: Dialer manifest
+      - name: Add native code
         run: |
-          sed -i 's#<application#<uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>\n    <application#' android/app/src/main/AndroidManifest.xml
-          sed -i 's#</activity>#    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/><data android:scheme="tel"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="tel"/></intent-filter>\n    </activity>#' android/app/src/main/AndroidManifest.xml
-          sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardInCallService" android:permission="android.permission.BIND_INCALL_SERVICE" android:exported="true"><meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true"/><intent-filter><action android:name="android.telecom.InCallService"/></intent-filter></service>\n    <activity android:name="com.example.call_guard.InCallActivity" android:exported="false" android:launchMode="singleInstance" android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>\n    </application>#' android/app/src/main/AndroidManifest.xml
-          grep -q "CallGuardInCallService" android/app/src/main/AndroidManifest.xml || (echo "DIALER MANIFEST FAIL" && exit 1)
-          grep -q "android.intent.action.DIAL" android/app/src/main/AndroidManifest.xml || (echo "DIAL FILTER FAIL" && exit 1)
-
-      - name: Dialer service code
-        run: |
+          rm -f $(find android/app/src/main -name 'MainActivity.*')
           mkdir -p android/app/src/main/kotlin/com/example/call_guard
-          cat > android/app/src/main/kotlin/com/example/call_guard/CallGuardInCallService.kt << 'KOTLIN'
-          package com.example.call_guard
+          cp native/*.kt android/app/src/main/kotlin/com/example/call_guard/
 
-          import android.annotation.TargetApi
-          import android.app.Notification
-          import android.app.NotificationChannel
-          import android.app.NotificationManager
-          import android.app.PendingIntent
-          import android.content.Context
-          import android.content.Intent
-          import android.os.Build
-          import android.telecom.Call
-          import android.telecom.InCallService
+      - run: flutter pub get
 
-          const val CG_NOTIF_ID = 7001
+      - run: flutter build apk --release
 
-          @TargetApi(29)
-          object CallHolder {
-              var call: Call? = null
-              var service: InCallService? = null
-
-              fun label(c: Call): String {
-                  try {
-                      val d = c.details
-                      val name = d.callerDisplayName
-                      if (!name.isNullOrEmpty()) return name
-                      val h = d.handle
-                      if (h != null) return h.schemeSpecificPart ?: "Unknown"
-                  } catch (e: Exception) {
-                  }
-                  return "Unknown"
-              }
-          }
-
-          @TargetApi(29)
-          class CallGuardInCallService : InCallService() {
-
-              private val cb = object : Call.Callback() {
-                  override fun onStateChanged(call: Call, state: Int) {
-                      if (state != Call.STATE_RINGING) {
-                          cancelNotif()
-                      }
-                  }
-              }
-
-              override fun onCallAdded(call: Call) {
-                  super.onCallAdded(call)
-                  CallHolder.call = call
-                  CallHolder.service = this
-                  call.registerCallback(cb)
-                  if (call.state == Call.STATE_RINGING) {
-                      showIncoming(call)
-                  } else {
-                      openUi()
-                  }
-              }
-
-              override fun onCallRemoved(call: Call) {
-                  super.onCallRemoved(call)
-                  try {
-                      call.unregisterCallback(cb)
-                  } catch (e: Exception) {
-                  }
-                  if (CallHolder.call == call) {
-                      CallHolder.call = null
-                  }
-                  cancelNotif()
-              }
-
-              private fun openUi() {
-                  try {
-                      val i = Intent(this, InCallActivity::class.java)
-                      i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                      startActivity(i)
-                  } catch (e: Exception) {
-                  }
-              }
-
-              private fun showIncoming(call: Call) {
-                  try {
-                      val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                      if (Build.VERSION.SDK_INT >= 26) {
-                          nm.createNotificationChannel(
-                              NotificationChannel("cg_incall", "Incoming calls", NotificationManager.IMPORTANCE_HIGH)
-                          )
-                      }
-                      val i = Intent(this, InCallActivity::class.java)
-                      i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                      val flags = if (Build.VERSION.SDK_INT >= 23) {
-                          PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                      } else {
-                          PendingIntent.FLAG_UPDATE_CURRENT
-                      }
-                      val pi = PendingIntent.getActivity(this, 0, i, flags)
-                      val b = if (Build.VERSION.SDK_INT >= 26) {
-                          Notification.Builder(this, "cg_incall")
-                      } else {
-                          Notification.Builder(this)
-                      }
-                      b.setSmallIcon(android.R.drawable.ic_menu_call)
-                      b.setContentTitle("Incoming call")
-                      b.setContentText(CallHolder.label(call))
-                      b.setContentIntent(pi)
-                      b.setFullScreenIntent(pi, true)
-                      b.setOngoing(true)
-                      b.setCategory(Notification.CATEGORY_CALL)
-                      nm.notify(CG_NOTIF_ID, b.build())
-                  } catch (e: Exception) {
-                  }
-                  openUi()
-              }
-
-              private fun cancelNotif() {
-                  try {
-                      val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                      nm.cancel(CG_NOTIF_ID)
-                  } catch (e: Exception) {
-                  }
-              }
-          }
-          KOTLIN
-
-      - name: Dialer screen code
-        run: |
-          cat > android/app/src/main/kotlin/com/example/call_guard/InCallActivity.kt << 'KOTLIN'
-          package com.example.call_guard
-
-          import android.annotation.TargetApi
-          import android.app.Activity
-          import android.graphics.Color
-          import android.os.Build
-          import android.os.Bundle
-          import android.telecom.Call
-          import android.telecom.CallAudioState
-          import android.telecom.VideoProfile
-          import android.view.Gravity
-          import android.view.View
-          import android.view.WindowManager
-          import android.widget.Button
-          import android.widget.LinearLayout
-          import android.widget.TextView
-
-          @TargetApi(29)
-          class InCallActivity : Activity() {
-              private var nameView: TextView? = null
-              private var stateView: TextView? = null
-              private var row: LinearLayout? = null
-              private var muted = false
-              private var speaker = false
-
-              private val cb = object : Call.Callback() {
-                  override fun onStateChanged(call: Call, state: Int) {
-                      refresh()
-                  }
-              }
-
-              override fun onCreate(savedInstanceState: Bundle?) {
-                  super.onCreate(savedInstanceState)
-                  if (Build.VERSION.SDK_INT >= 27) {
-                      setShowWhenLocked(true)
-                      setTurnScreenOn(true)
-                  } else {
-                      window.addFlags(
-                          WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                              WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
-                      )
-                  }
-                  window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                  val d = resources.displayMetrics.density
-                  val root = LinearLayout(this)
-                  root.orientation = LinearLayout.VERTICAL
-                  root.gravity = Gravity.CENTER_HORIZONTAL
-                  root.setBackgroundColor(Color.parseColor("#0D1B2A"))
-                  root.setPadding((24 * d).toInt(), (100 * d).toInt(), (24 * d).toInt(), (48 * d).toInt())
-
-                  val n = TextView(this)
-                  n.textSize = 30f
-                  n.setTextColor(Color.WHITE)
-                  n.gravity = Gravity.CENTER
-                  nameView = n
-                  root.addView(n)
-
-                  val s = TextView(this)
-                  s.textSize = 18f
-                  s.setTextColor(Color.parseColor("#90CAF9"))
-                  s.gravity = Gravity.CENTER
-                  s.setPadding(0, (12 * d).toInt(), 0, 0)
-                  stateView = s
-                  root.addView(s)
-
-                  val gap = View(this)
-                  root.addView(gap, LinearLayout.LayoutParams(1, 0, 1f))
-
-                  val r = LinearLayout(this)
-                  r.orientation = LinearLayout.HORIZONTAL
-                  row = r
-                  root.addView(
-                      r,
-                      LinearLayout.LayoutParams(
-                          LinearLayout.LayoutParams.MATCH_PARENT,
-                          LinearLayout.LayoutParams.WRAP_CONTENT
-                      )
-                  )
-                  setContentView(root)
-              }
-
-              override fun onResume() {
-                  super.onResume()
-                  CallHolder.call?.registerCallback(cb)
-                  refresh()
-              }
-
-              override fun onPause() {
-                  super.onPause()
-                  try {
-                      CallHolder.call?.unregisterCallback(cb)
-                  } catch (e: Exception) {
-                  }
-              }
-
-              private fun btn(text: String, color: String, onClick: () -> Unit): Button {
-                  val d = resources.displayMetrics.density
-                  val b = Button(this)
-                  b.text = text
-                  b.setTextColor(Color.WHITE)
-                  b.setBackgroundColor(Color.parseColor(color))
-                  val lp = LinearLayout.LayoutParams(0, (56 * d).toInt(), 1f)
-                  lp.setMargins(8, 8, 8, 8)
-                  b.layoutParams = lp
-                  b.setOnClickListener { onClick() }
-                  return b
-              }
-
-              private fun refresh() {
-                  val c = CallHolder.call
-                  if (c == null) {
-                      finish()
-                      return
-                  }
-                  val state = c.state
-                  if (state == Call.STATE_DISCONNECTED) {
-                      finish()
-                      return
-                  }
-                  val h = c.details.handle
-                  val raw = h?.schemeSpecificPart ?: ""
-                  val num = raw.filter { it.isDigit() }.takeLast(10)
-                  val spam = num.startsWith("140") || num.startsWith("160")
-                  nameView?.text = CallHolder.label(c)
-                  nameView?.setTextColor(if (spam) Color.parseColor("#FF5252") else Color.WHITE)
-                  val base = when (state) {
-                      Call.STATE_RINGING -> "Incoming call"
-                      Call.STATE_DIALING, Call.STATE_CONNECTING -> "Calling..."
-                      Call.STATE_ACTIVE -> "Connected"
-                      Call.STATE_HOLDING -> "On hold"
-                      else -> ""
-                  }
-                  stateView?.text = if (spam) base + "  |  SPAM" else base
-
-                  val r = row
-                  if (r != null) {
-                      r.removeAllViews()
-                      if (state == Call.STATE_RINGING) {
-                          r.addView(btn("Answer", "#2E7D32") {
-                              c.answer(VideoProfile.STATE_AUDIO_ONLY)
-                          })
-                          r.addView(btn("Reject", "#C62828") {
-                              c.reject(false, null)
-                          })
-                      } else {
-                          r.addView(btn(if (muted) "Unmute" else "Mute", "#37474F") {
-                              muted = !muted
-                              CallHolder.service?.setMuted(muted)
-                              refresh()
-                          })
-                          r.addView(btn(if (speaker) "Earpiece" else "Speaker", "#37474F") {
-                              speaker = !speaker
-                              CallHolder.service?.setAudioRoute(
-                                  if (speaker) CallAudioState.ROUTE_SPEAKER else CallAudioState.ROUTE_EARPIECE
-                              )
-                              refresh()
-                          })
-                          r.addView(btn("End", "#C62828") {
-                              c.disconnect()
-                          })
-                      }
-                  }
-              }
-          }
-          KOTLIN
-
-      - name: Build APK
-        run: flutter build apk --release
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: app-release
+          name: call-guard-apk
           path: build/app/outputs/flutter-apk/app-release.apk
