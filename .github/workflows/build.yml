@@ -30,6 +30,9 @@ jobs:
           for k in "sms_tab.dart" "const CommHub()" "Icons.forum_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "receptionist_tab.dart"; do
             grep -q "$k" lib/main.dart || { echo "PATCH FAIL: $k"; exit 1; }
           done
+          sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
+          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
+          grep -q "FlutterPhoneDirectCaller" lib/calls_tab.dart || { echo "CALLS PATCH FAIL"; exit 1; }
 
       - uses: actions/setup-java@v4
         with:
@@ -44,7 +47,7 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android android
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CALL_PHONE"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CALL_PHONE"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>\n    <application#' android/app/src/main/AndroidManifest.xml
           if grep -q "<queries>" android/app/src/main/AndroidManifest.xml; then
             sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' android/app/src/main/AndroidManifest.xml
           else
@@ -84,7 +87,7 @@ jobs:
 
       - run: flutter pub get
 
-      - run: flutter build apk --release
+      - run: flutter build apk --release --build-number=${{ github.run_number }}
 
       - uses: actions/upload-artifact@v4
         with:
