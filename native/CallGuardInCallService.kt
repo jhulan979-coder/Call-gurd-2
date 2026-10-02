@@ -7,11 +7,22 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.ContactsContract
+import android.speech.tts.TextToSpeech
 import android.telecom.Call
 import android.telecom.InCallService
+import android.telecom.TelecomManager
+import com.google.i18n.phonenumbers.PhoneNumberUtil
+import com.google.i18n.phonenumbers.geocoding.PhoneNumberOfflineGeocoder
+import java.util.Locale
 
 const val CG_NOTIF_ID = 7001
 
@@ -33,6 +44,22 @@ object CallHolder {
         return null
     }
 
+    fun circle(raw: String): String? {
+        try {
+            if (raw.isEmpty()) return null
+            val p = PhoneNumberUtil.getInstance().parse(raw, "IN")
+            val s = PhoneNumberOfflineGeocoder.getInstance().getDescriptionForNumber(p, Locale.ENGLISH)
+            if (!s.isNullOrEmpty() && !s.equals("India", true)) return s
+        } catch (e: Throwable) {
+        }
+        return null
+    }
+
+    fun where(raw: String): String {
+        val c = circle(raw)
+        return if (c != null) raw + "  |  " + c else raw
+    }
+
     fun label(ctx: Context, c: Call): String {
         try {
             val d = c.details
@@ -49,11 +76,29 @@ object CallHolder {
 }
 
 class CallGuardInCallService : InCallService() {
+    private var sm: SensorManager? = null
+
+    private val flip = object : SensorEventListener {
+        override fun onSensorChanged(e: SensorEvent) {
+            if (e.values.size > 2 && e.values[2] < -7.0f) {
+                try {
+                    val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+                    tm.silenceRinger()
+                } catch (x: Throwable) {
+                }
+                stopFlip()
+            }
+        }
+
+        override fun onAccuracyChanged(s: Sensor?, a: Int) {
+        }
+    }
 
     private val cb = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) {
             if (state != Call.STATE_RINGING) {
                 cancelNotif()
+                stopFlip()
             }
         }
     }
@@ -65,6 +110,8 @@ class CallGuardInCallService : InCallService() {
         call.registerCallback(cb)
         if (call.state == Call.STATE_RINGING) {
             showIncoming(call)
+            announce(call)
+            startFlip()
         } else {
             openUi()
         }
@@ -80,6 +127,65 @@ class CallGuardInCallService : InCallService() {
             CallHolder.call = null
         }
         cancelNotif()
+        stopFlip()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopFlip()
+    }
+
+    private fun startFlip() {
+        try {
+            sm = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            val s = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            if (s != null) {
+                sm?.registerListener(flip, s, SensorManager.SENSOR_DELAY_NORMAL)
+            }
+        } catch (e: Throwable) {
+        }
+    }
+
+    private fun stopFlip() {
+        try {
+            sm?.unregisterListener(flip)
+        } catch (e: Throwable) {
+        }
+    }
+
+    private fun speak(text: String) {
+        try {
+            val p = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            if (!p.getBoolean("flutter.announce", true)) return
+            var t: TextToSpeech? = null
+            t = TextToSpeech(applicationContext) { st ->
+                if (st == TextToSpeech.SUCCESS) {
+                    t?.language = Locale("en", "IN")
+                    t?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cg")
+                    Handler(Looper.getMainLooper()).postDelayed({ t?.shutdown() }, 8000)
+                }
+            }
+        } catch (e: Throwable) {
+        }
+    }
+
+    private fun announce(call: Call) {
+        try {
+            val raw = call.details.handle?.schemeSpecificPart ?: ""
+            val digits = raw.filter { it.isDigit() }
+            val n = if (digits.length > 10) digits.substring(digits.length - 10) else digits
+            if (n.startsWith("140") || n.startsWith("160")) return
+            val name = call.details.callerDisplayName
+            val saved = if (!name.isNullOrEmpty()) name else CallHolder.lookup(this, raw)
+            val text = if (!saved.isNullOrEmpty()) {
+                saved + " calling"
+            } else {
+                val c = CallHolder.circle(raw)
+                if (c != null) "Unknown number from " + c else "Unknown number"
+            }
+            speak(text)
+        } catch (e: Throwable) {
+        }
     }
 
     private fun openUi() {
@@ -108,9 +214,11 @@ class CallGuardInCallService : InCallService() {
             } else {
                 Notification.Builder(this)
             }
+            val raw = call.details.handle?.schemeSpecificPart ?: ""
+            val circ = CallHolder.circle(raw)
             b.setSmallIcon(android.R.drawable.ic_menu_call)
             b.setContentTitle("Incoming call")
-            b.setContentText(CallHolder.label(this, call))
+            b.setContentText(CallHolder.label(this, call) + (if (circ != null) "  |  " + circ else ""))
             b.setContentIntent(pi)
             b.setFullScreenIntent(pi, true)
             b.setOngoing(true)
