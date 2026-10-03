@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core.dart';
+import 'lang.dart';
 
 const _sn = MethodChannel('callguard/native');
 
@@ -80,6 +81,37 @@ class _SettingsPageState extends State<SettingsPage>
     await p.setBool(k, x);
   }
 
+  String get _langName {
+    final l = langNotifier.value;
+    if (l == 'en') return 'English';
+    if (l == 'or') return 'ଓଡ଼ିଆ (Odia)';
+    return 'Hinglish';
+  }
+
+  Future<void> _pickLang() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Language / Bhasha'),
+        children: [
+          for (final e in const [
+            ['hi', 'Hinglish'],
+            ['en', 'English'],
+            ['or', 'ଓଡ଼ିଆ (Odia)'],
+          ])
+            SimpleDialogOption(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await setLang(e[0]);
+                if (mounted) setState(() {});
+              },
+              child: Text(e[1]),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _editKey() async {
     final c = TextEditingController(text: store.apiKey);
     final ok = await showDialog<bool>(
@@ -89,7 +121,7 @@ class _SettingsPageState extends State<SettingsPage>
         content: TextField(
           controller: c,
           decoration: const InputDecoration(
-            hintText: 'API key yahan paste karo',
+            hintText: 'API key',
             border: OutlineInputBorder(),
           ),
         ),
@@ -187,6 +219,12 @@ class _SettingsPageState extends State<SettingsPage>
                 ],
               ],
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.language),
+            title: const Text('Language / Bhasha'),
+            subtitle: Text(_langName),
+            onTap: _pickLang,
           ),
           _head('Call blocking'),
           _sw('autoBlock', 'Auto call blocking',
