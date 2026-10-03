@@ -14,7 +14,7 @@ jobs:
       - name: Prepare files
         run: |
           mkdir -p lib native
-          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page; do
+          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page lang; do
             if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
           for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity DialerRole CircleLookup; do
@@ -133,6 +133,12 @@ jobs:
           sed -i "s#Text('Haan, delete karo')#Text('Yes')#" lib/main.dart
           sed -i "s#const Text('Nahi')#const Text('No')#" lib/main.dart lib/calls_tab.dart
           sed -i "s#Call history se hatao?#Call history se delete karein?#" lib/main.dart lib/calls_tab.dart
+          for f in main tabs calls_tab; do
+            sed -i "s#import 'package:flutter/material.dart';#import 'package:flutter/material.dart' hide Text;\nimport 'lang.dart';#" lib/$f.dart
+            grep -q "import 'lang.dart'" lib/$f.dart || echo "WARNING: $f me language nahi juda"
+          done
+          sed -i "s#store.load();#store.load();\n    loadLang();#" lib/main.dart
+          grep -q "loadLang();" lib/main.dart || echo "WARNING: loadLang nahi juda"
           grep -q "onLongPress: () => _delete(c)" lib/main.dart || echo "WARNING: home me delete jura nahi"
           grep -q "Future<void> _delete(CallItem c)" lib/main.dart || echo "WARNING: home delete function jura nahi"
           grep -q "onLongPress: () => _deleteCall(c)" lib/calls_tab.dart || echo "WARNING: contacts tab me delete jura nahi"
