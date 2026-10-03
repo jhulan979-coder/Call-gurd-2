@@ -1,8 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core.dart';
 
 const _sn = MethodChannel('callguard/native');
+
+const _defaults = <String, bool>{
+  'autoBlock': true,
+  'announce': true,
+  'spamVoice': true,
+  'flip': true,
+  'infoPopup': true,
+  'blockNotif': true,
+  'onlineCircle': true,
+  'blockTele': false,
+  'blockHidden': false,
+  'blockIntl': false,
+};
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -13,14 +27,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage>
     with WidgetsBindingObserver {
-  final Map<String, bool> _v = {
-    'autoBlock': true,
-    'announce': true,
-    'spamVoice': true,
-    'flip': true,
-    'infoPopup': true,
-    'blockNotif': true,
-  };
+  final Map<String, bool> _v = Map<String, bool>.from(_defaults);
   bool _isDefault = false;
 
   @override
@@ -45,8 +52,8 @@ class _SettingsPageState extends State<SettingsPage>
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
     setState(() {
-      for (final k in _v.keys.toList()) {
-        _v[k] = p.getBool(k) ?? true;
+      for (final k in _defaults.keys) {
+        _v[k] = p.getBool(k) ?? _defaults[k]!;
       }
     });
   }
@@ -73,18 +80,67 @@ class _SettingsPageState extends State<SettingsPage>
     await p.setBool(k, x);
   }
 
-  Widget _sw(String k, String title, String sub) {
+  Future<void> _editKey() async {
+    final c = TextEditingController(text: store.apiKey);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gemini API key'),
+        content: TextField(
+          controller: c,
+          decoration: const InputDecoration(
+            hintText: 'API key yahan paste karo',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('No')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      store.setKey(c.text.trim());
+      if (mounted) setState(() {});
+    }
+  }
+
+  String get _keyText {
+    final k = store.apiKey;
+    if (k.isEmpty) return 'Daali nahi gayi';
+    final tail = k.length > 4 ? k.substring(k.length - 4) : k;
+    return '••••' + tail;
+  }
+
+  Widget _head(String t) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      child: Text(
+        t,
+        style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: Theme.of(context).colorScheme.primary),
+      ),
+    );
+  }
+
+  Widget _sw(String k, String title, String sub, {bool enabled = true}) {
     return SwitchListTile(
       title: Text(title),
       subtitle: Text(sub),
-      value: _v[k] ?? true,
-      onChanged: (x) => _set(k, x),
+      value: _v[k] ?? false,
+      onChanged: enabled ? (x) => _set(k, x) : null,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final blockOn = _v['autoBlock'] ?? true;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
@@ -132,18 +188,50 @@ class _SettingsPageState extends State<SettingsPage>
               ],
             ),
           ),
+          _head('Call blocking'),
           _sw('autoBlock', 'Auto call blocking',
               'Block list wale numbers ki call apne aap reject'),
+          _sw('blockTele', 'Telemarketing numbers block karo',
+              '140 aur 160 se shuru hone wale numbers. Kuch bank bhi 160 se call karte hain',
+              enabled: blockOn),
+          _sw('blockHidden', 'Chhupe hue number block karo',
+              'Jinka number dikhta nahi (hidden / private)',
+              enabled: blockOn),
+          _sw('blockIntl', 'Videsh ke numbers block karo',
+              '+91 ke alawa kisi bhi desh ka number',
+              enabled: blockOn),
+          _sw('blockNotif', 'Block hui call ka notification',
+              'Call reject hone par notification'),
+          _head('Awaaz aur ring'),
           _sw('announce', 'Naam bolna',
               'Call aane par naam ya Unknown number bolna'),
           _sw('spamVoice', 'Spam caller awaaz',
               '140 ya 160 wale numbers par Spam caller bolna'),
           _sw('flip', 'Flip to silence',
               'Ring ke dauran phone ulta karne par ringtone band'),
+          _sw('onlineCircle', 'Unknown number ka state (online AI)',
+              'Gemini API key se. Number Google ko jata hai'),
+          _head('Notification'),
           _sw('infoPopup', 'Unknown caller ka chhota popup',
               'Call aane par Call Guard ka notification'),
-          _sw('blockNotif', 'Block hui call ka notification',
-              'Call reject hone par notification'),
+          _head('AI'),
+          ListTile(
+            leading: const Icon(Icons.vpn_key_outlined),
+            title: const Text('Gemini API key'),
+            subtitle: Text(_keyText),
+            onTap: _editKey,
+          ),
+          _head('About'),
+          const ListTile(
+            leading: Icon(Icons.privacy_tip_outlined),
+            title: Text('Privacy'),
+            subtitle: Text(
+                'Block list aur history sirf aapke phone me rehti hai. AI se poochho ya state wale switch par number Google Gemini ko jata hai.'),
+          ),
+          const ListTile(
+            leading: Icon(Icons.info_outline),
+            title: Text('Call Guard v2'),
+          ),
         ],
       ),
     );
