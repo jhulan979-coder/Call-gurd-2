@@ -30,8 +30,9 @@ jobs:
           for k in "sms_tab.dart" "const CommHub()" "Icons.forum_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "receptionist_tab.dart"; do
             grep -q "$k" lib/main.dart || { echo "PATCH FAIL: $k"; exit 1; }
           done
-          awk '/^class SettingsPage extends StatefulWidget/{skip=1} /^void showDialPad/{skip=0} !skip' lib/main.dart > lib/main.tmp && mv lib/main.tmp lib/main.dart
-          grep -q "class DialPadSheet" lib/main.dart || { echo "MAIN SETTINGS PATCH FAIL"; exit 1; }
+          sed -i 's/SettingsPage/SettingsScreen/g' lib/settings_page.dart
+          sed -i 's/const SettingsPage()/const SettingsScreen()/g' lib/main.dart
+          grep -q "const SettingsScreen()" lib/main.dart || { echo "SETTINGS PATCH FAIL"; exit 1; }
           sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
           grep -q "FlutterPhoneDirectCaller" lib/calls_tab.dart || { echo "CALLS PATCH FAIL"; exit 1; }
