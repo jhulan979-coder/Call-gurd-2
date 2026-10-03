@@ -36,6 +36,10 @@ jobs:
           sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
           grep -q "FlutterPhoneDirectCaller" lib/calls_tab.dart || { echo "CALLS PATCH FAIL"; exit 1; }
+          sed -i "s#'contents': contents,#'contents': contents,\n    'tools': [{'google_search': {}}],#" lib/core.dart
+          sed -i "s#Kisi khaas phone number ke baare me tum pakka nahi bata sakte, isliye sirf sambhavna aur salah do. #Kisi number ke baare me web search karke dekho ki logon ne use spam ya scam report kiya hai ya nahi. Sirf wahi batao jo search me mila, aur koi report na mile to saaf bolo Koi report nahi mili. Kuch gadho mat. #" lib/core.dart
+          grep -q "google_search" lib/core.dart || echo "WARNING: web search jura nahi"
+          grep -q "web search karke" lib/core.dart || echo "WARNING: AI prompt badla nahi"
           echo "PREPARE OK"
 
       - uses: actions/setup-java@v4
