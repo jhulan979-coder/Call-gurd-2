@@ -17,7 +17,7 @@ jobs:
           for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page; do
             if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
-          for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity DialerRole; do
+          for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity DialerRole CircleLookup; do
             [ -f native/$k.kt ] || cp $k.kt native/$k.kt || cp .github/workflows/$k.kt native/$k.kt || { echo "$k.kt NAHI MILI"; exit 1; }
           done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
@@ -33,11 +33,13 @@ jobs:
           sed -i 's/SettingsPage/SettingsScreen/g' lib/settings_page.dart
           sed -i 's/const SettingsPage()/const SettingsScreen()/g' lib/main.dart
           grep -q "const SettingsScreen()" lib/main.dart || { echo "SETTINGS PATCH FAIL"; exit 1; }
+          sed -i "s#'blockNotif': true,#'blockNotif': true,\n    'onlineCircle': true,#" lib/settings_page.dart
+          sed -i "s#'Call reject hone par notification'),#'Call reject hone par notification'),\n          _sw('onlineCircle', 'Unknown number ka state (online AI)', 'Gemini API key se. Number Google ko jata hai'),#" lib/settings_page.dart
+          grep -q "onlineCircle" lib/settings_page.dart || echo "WARNING: state switch jura nahi"
           sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
           grep -q "FlutterPhoneDirectCaller" lib/calls_tab.dart || { echo "CALLS PATCH FAIL"; exit 1; }
           sed -i "s#Chhota jawab do aur batao mujhe kya karna chahiye.#Ye number kis telecom circle (state) aur operator ka hai, ye bhi batao, pakka na ho to saaf bolo. Chhota jawab do aur batao mujhe kya karna chahiye.#" lib/tabs.dart lib/calls_tab.dart
-          grep -q "telecom circle" lib/tabs.dart || echo "WARNING: state prompt badla nahi"
           echo "PREPARE OK"
 
       - uses: actions/setup-java@v4
@@ -68,7 +70,6 @@ jobs:
           grep -q "android.intent.action.DIAL" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST DIAL FAIL"; exit 1; }
           grep -q "READ_CALL_LOG" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST CALLLOG FAIL"; exit 1; }
           grep -q "com.jhulan.callguard" android/app/build.gradle* || { echo "PACKAGE RENAME FAIL"; exit 1; }
-          grep -q 'android:label="Call Guard"' android/app/src/main/AndroidManifest.xml || echo "WARNING: app ka naam badla nahi"
 
       - name: App icon
         run: |
@@ -126,12 +127,14 @@ jobs:
           sed -i 's#^\( *\)show("callguard_alerts"#\1if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.blockNotif", true)) show("callguard_alerts"#' $F/CallGuardScreeningService.kt
           sed -i 's#^            startFlip()$#            if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.flip", true)) startFlip()#' $F/CallGuardInCallService.kt
           sed -i 's#"requestNotificationPermission" -> requestNotif(result)#"requestNotificationPermission" -> requestNotif(result)\n                    "isDefaultDialer" -> result.success(DialerRole.isDefault(this))\n                    "requestDialerRole" -> { DialerRole.request(this); result.success(true) }#' $F/MainActivity.kt
+          sed -i 's#stateView?.text = if (tag != null) base + "  |  SPAM - " + tag else base#stateView?.text = (if (tag != null) base + "  |  SPAM - " + tag else base) + CallHolder.circleFor(num)#' $F/InCallActivity.kt
           grep -q "flutter.spamVoice" $F/CallGuardScreeningService.kt || echo "WARNING: spamVoice switch jura nahi"
           grep -q "flutter.autoBlock" $F/CallGuardScreeningService.kt || echo "WARNING: autoBlock switch jura nahi"
           grep -q "flutter.infoPopup" $F/CallGuardScreeningService.kt || echo "WARNING: infoPopup switch jura nahi"
           grep -q "flutter.blockNotif" $F/CallGuardScreeningService.kt || echo "WARNING: blockNotif switch jura nahi"
           grep -q "flutter.flip" $F/CallGuardInCallService.kt || echo "WARNING: flip switch jura nahi"
           grep -q "requestDialerRole" $F/MainActivity.kt || echo "WARNING: default button jura nahi"
+          grep -q "circleFor" $F/InCallActivity.kt || echo "WARNING: call screen par state jura nahi"
           echo "NATIVE OK"
 
       - name: Fixed signing key
@@ -139,6 +142,15 @@ jobs:
           if [ -f signing/debug.b64 ]; then
             mkdir -p ~/.android
             base64 -d signing/debug.b64 > ~/.android/debug.keystore
+            base64 -d signing/debug.b64 > android/app/cg.jks
+            K=android/app/build.gradle.kts
+            if [ -f $K ]; then
+              sed -i 's#buildTypes {#signingConfigs {\n        create("cg") {\n            storeFile = file("cg.jks")\n            storePassword = "android"\n            keyAlias = "androiddebugkey"\n            keyPassword = "android"\n        }\n    }\n    buildTypes {#' $K
+              sed -i 's#signingConfigs.getByName("debug")#signingConfigs.getByName("cg")#' $K
+              grep -q 'getByName("cg")' $K || echo "WARNING: signing config laga nahi"
+            else
+              echo "WARNING: build.gradle.kts nahi mili"
+            fi
             echo "FIXED KEY LAGA"
           else
             echo "SIGNING KEY NAHI MILI"
@@ -147,6 +159,11 @@ jobs:
       - run: flutter pub get
 
       - run: flutter build apk --release --build-number=${{ github.run_number }}
+
+      - name: Show signing fingerprint
+        run: |
+          AS=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)/apksigner
+          $AS verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep -i "SHA-256" || echo "fingerprint nahi mila"
 
       - uses: actions/upload-artifact@v4
         with:
