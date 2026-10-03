@@ -21,13 +21,13 @@ jobs:
             [ -f native/$k.kt ] || cp $k.kt native/$k.kt || cp .github/workflows/$k.kt native/$k.kt || { echo "$k.kt NAHI MILI"; exit 1; }
           done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
-          sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'sms_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
+          sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';#" lib/main.dart
-          sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CommHub(),#" lib/main.dart
+          sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CallsTab(),#" lib/main.dart
           sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
-          sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.forum_outlined), label: 'Inbox'),#" lib/main.dart
+          sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.contacts_outlined), label: 'Contacts'),#" lib/main.dart
           sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),#" lib/main.dart
-          for k in "sms_tab.dart" "const CommHub()" "Icons.forum_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "receptionist_tab.dart"; do
+          for k in "receptionist_tab.dart" "const CallsTab()" "Icons.contacts_outlined" "const ProtectCard()" "protect.dart" "const AiHub()"; do
             grep -q "$k" lib/main.dart || { echo "PATCH FAIL: $k"; exit 1; }
           done
           sed -i 's/SettingsPage/SettingsScreen/g' lib/settings_page.dart
@@ -36,13 +36,9 @@ jobs:
           sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
           grep -q "FlutterPhoneDirectCaller" lib/calls_tab.dart || { echo "CALLS PATCH FAIL"; exit 1; }
-          sed -i "s#'contents': contents,#'contents': contents,\n    'tools': [{'google_search': {}}],#" lib/core.dart
-          sed -i "s#Kisi khaas phone number ke baare me tum pakka nahi bata sakte, isliye sirf sambhavna aur salah do. #Kisi number ke baare me web search karke dekho ki logon ne use spam ya scam report kiya hai ya nahi. Sirf wahi batao jo search me mila, aur koi report na mile to saaf bolo Koi report nahi mili. Kuch gadho mat. #" lib/core.dart
-          grep -q "google_search" lib/core.dart || echo "WARNING: web search jura nahi"
-          grep -q "web search karke" lib/core.dart || echo "WARNING: AI prompt badla nahi"
-          echo "PREPARE OK"
-          sed -i "s#Chhota jawab do aur batao mujhe kya karna chahiye.#Ye number kis telecom circle (state) aur operator ka hai, web search se batao, pakka na ho to saaf bolo. Chhota jawab do aur batao mujhe kya karna chahiye.#" lib/tabs.dart lib/calls_tab.dart
+          sed -i "s#Chhota jawab do aur batao mujhe kya karna chahiye.#Ye number kis telecom circle (state) aur operator ka hai, ye bhi batao, pakka na ho to saaf bolo. Chhota jawab do aur batao mujhe kya karna chahiye.#" lib/tabs.dart lib/calls_tab.dart
           grep -q "telecom circle" lib/tabs.dart || echo "WARNING: state prompt badla nahi"
+          echo "PREPARE OK"
 
       - uses: actions/setup-java@v4
         with:
@@ -65,12 +61,14 @@ jobs:
           fi
           sed -i 's#</activity>#    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/><data android:scheme="tel"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="tel"/></intent-filter>\n    </activity>#' android/app/src/main/AndroidManifest.xml
           sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    <service android:name="com.example.call_guard.CallGuardInCallService" android:permission="android.permission.BIND_INCALL_SERVICE" android:exported="true"><meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true"/><intent-filter><action android:name="android.telecom.InCallService"/></intent-filter></service>\n    <activity android:name="com.example.call_guard.InCallActivity" android:exported="false" android:launchMode="singleInstance" android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>\n    </application>#' android/app/src/main/AndroidManifest.xml
+          sed -i 's/android:label="[^"]*"/android:label="Call Guard"/' android/app/src/main/AndroidManifest.xml
           for g in android/app/build.gradle.kts android/app/build.gradle; do [ -f $g ] && sed -i 's/applicationId .*/applicationId = "com.jhulan.callguard"/' $g; done
           grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST SCREENING FAIL"; exit 1; }
           grep -q "CallGuardInCallService" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST INCALL FAIL"; exit 1; }
           grep -q "android.intent.action.DIAL" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST DIAL FAIL"; exit 1; }
           grep -q "READ_CALL_LOG" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST CALLLOG FAIL"; exit 1; }
           grep -q "com.jhulan.callguard" android/app/build.gradle* || { echo "PACKAGE RENAME FAIL"; exit 1; }
+          grep -q 'android:label="Call Guard"' android/app/src/main/AndroidManifest.xml || echo "WARNING: app ka naam badla nahi"
 
       - name: Add phone number library
         run: |
