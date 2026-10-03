@@ -20,6 +20,7 @@ import android.speech.tts.TextToSpeech
 import android.telecom.Call
 import android.telecom.InCallService
 import android.telecom.TelecomManager
+import android.widget.Toast
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import com.google.i18n.phonenumbers.geocoding.PhoneNumberOfflineGeocoder
 import java.util.Locale
@@ -78,6 +79,7 @@ object CallHolder {
 
 class CallGuardInCallService : InCallService() {
     private var sm: SensorManager? = null
+    private var ttsRef: TextToSpeech? = null
 
     private val flip = object : SensorEventListener {
         override fun onSensorChanged(e: SensorEvent) {
@@ -90,7 +92,14 @@ class CallGuardInCallService : InCallService() {
                 } catch (x: Throwable) {
                     ok = false
                 }
-                speak(if (ok) "Silenced" else "Silence failed")
+                try {
+                    Toast.makeText(
+                        applicationContext,
+                        if (ok) "Silenced" else "Silence failed",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } catch (x: Throwable) {
+                }
             }
         }
 
@@ -103,6 +112,13 @@ class CallGuardInCallService : InCallService() {
             if (state != Call.STATE_RINGING) {
                 cancelNotif()
                 stopFlip()
+            }
+            if (state == Call.STATE_ACTIVE) {
+                this@CallGuardInCallService.stopSpeech()
+                try {
+                    this@CallGuardInCallService.setMuted(false)
+                } catch (x: Throwable) {
+                }
             }
         }
     }
@@ -132,11 +148,13 @@ class CallGuardInCallService : InCallService() {
         }
         cancelNotif()
         stopFlip()
+        stopSpeech()
     }
 
     override fun onDestroy() {
         super.onDestroy()
         stopFlip()
+        stopSpeech()
     }
 
     private fun startFlip() {
@@ -157,18 +175,36 @@ class CallGuardInCallService : InCallService() {
         }
     }
 
+    private fun stopSpeech() {
+        try {
+            ttsRef?.stop()
+        } catch (e: Throwable) {
+        }
+        try {
+            ttsRef?.shutdown()
+        } catch (e: Throwable) {
+        }
+        ttsRef = null
+    }
+
     private fun speak(text: String) {
         try {
             val p = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             if (!p.getBoolean("flutter.announce", true)) return
+            stopSpeech()
             var t: TextToSpeech? = null
             t = TextToSpeech(applicationContext) { st ->
                 if (st == TextToSpeech.SUCCESS) {
-                    t?.language = Locale("en", "IN")
-                    t?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cg")
-                    Handler(Looper.getMainLooper()).postDelayed({ t?.shutdown() }, 8000)
+                    if (CallHolder.call?.state != Call.STATE_ACTIVE) {
+                        t?.language = Locale("en", "IN")
+                        t?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cg")
+                        Handler(Looper.getMainLooper()).postDelayed({ t?.shutdown() }, 8000)
+                    } else {
+                        t?.shutdown()
+                    }
                 }
             }
+            ttsRef = t
         } catch (e: Throwable) {
         }
     }
