@@ -22,15 +22,6 @@ import android.telecom.InCallService
 import android.telecom.TelecomManager
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import com.google.i18n.phonenumbers.geocoding.PhoneNumberOfflineGeocoder
-import android.graphics.Color
-import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
-import android.provider.Settings
-import android.view.Gravity
-import android.view.View
-import android.view.WindowManager
-import android.widget.LinearLayout
-import android.widget.TextView
 import java.util.Locale
 
 const val CG_NOTIF_ID = 7001
@@ -38,6 +29,12 @@ const val CG_NOTIF_ID = 7001
 object CallHolder {
     var call: Call? = null
     var service: InCallService? = null
+    val circles = HashMap<String, String>()
+
+    fun circleFor(num: String): String {
+        val c = circles[num] ?: return ""
+        return "  |  " + c
+    }
 
     fun lookup(ctx: Context, raw: String): String? {
         if (raw.isEmpty()) return null
@@ -62,11 +59,6 @@ object CallHolder {
         } catch (e: Throwable) {
         }
         return null
-    }
-
-    fun where(raw: String): String {
-        val c = circle(raw)
-        return if (c != null) raw + "  |  " + c else raw
     }
 
     fun label(ctx: Context, c: Call): String {
@@ -123,7 +115,6 @@ class CallGuardInCallService : InCallService() {
         if (call.state == Call.STATE_RINGING) {
             showIncoming(call)
             announce(call)
-            CallOverlay.show(this, call)
             startFlip()
         } else {
             openUi()
@@ -132,7 +123,6 @@ class CallGuardInCallService : InCallService() {
 
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
-        CallOverlay.hide()
         try {
             call.unregisterCallback(cb)
         } catch (e: Exception) {
@@ -191,13 +181,33 @@ class CallGuardInCallService : InCallService() {
             if (n.startsWith("140") || n.startsWith("160")) return
             val name = call.details.callerDisplayName
             val saved = if (!name.isNullOrEmpty()) name else CallHolder.lookup(this, raw)
-            val text = if (!saved.isNullOrEmpty()) {
-                saved + " calling"
-            } else {
-                val c = CallHolder.circle(raw)
-                if (c != null) "Unknown number from " + c else "Unknown number"
+            if (!saved.isNullOrEmpty()) {
+                speak(saved + " calling")
+                return
             }
-            speak(text)
+            val off = CallHolder.circle(raw)
+            if (off != null) {
+                CallHolder.circles[n] = off
+                speak("Unknown number from " + off)
+                return
+            }
+            val p = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            if (!p.getBoolean("flutter.onlineCircle", true) || n.length != 10) {
+                speak("Unknown number")
+                return
+            }
+            val ctx = applicationContext
+            Thread {
+                val c = CircleLookup.get(ctx, n)
+                Handler(Looper.getMainLooper()).post {
+                    if (c != null) {
+                        CallHolder.circles[n] = c + " (AI)"
+                    }
+                    if (call.state == Call.STATE_RINGING) {
+                        speak(if (c != null) "Unknown number from " + c else "Unknown number")
+                    }
+                }
+            }.start()
         } catch (e: Throwable) {
         }
     }
@@ -248,106 +258,6 @@ class CallGuardInCallService : InCallService() {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.cancel(CG_NOTIF_ID)
         } catch (e: Exception) {
-        }
-    }
-}
-object CallOverlay {
-    private var view: View? = null
-    private var wm: WindowManager? = null
-
-    fun hide() {
-        try {
-            if (view != null) wm?.removeView(view)
-        } catch (e: Throwable) {
-        }
-        view = null
-    }
-
-    fun show(ctx: Context, call: Call) {
-        try {
-            if (!Settings.canDrawOverlays(ctx)) return
-            hide()
-            val raw = call.details.handle?.schemeSpecificPart ?: ""
-            val name = CallHolder.label(ctx, call)
-            val circ = CallHolder.circle(raw)
-            val digits = raw.filter { it.isDigit() }
-            val n = if (digits.length > 10) digits.substring(digits.length - 10) else digits
-            val tele = n.startsWith("140") || n.startsWith("160")
-            val d = ctx.resources.displayMetrics.density
-
-            fun pill(txt: String, bg: Int, fg: Int, click: () -> Unit): TextView {
-                val t = TextView(ctx)
-                t.text = txt
-                t.setTextColor(fg)
-                t.textSize = 14f
-                t.gravity = Gravity.CENTER
-                t.setPadding((16 * d).toInt(), (10 * d).toInt(), (16 * d).toInt(), (10 * d).toInt())
-                val g = GradientDrawable()
-                g.cornerRadius = 20 * d
-                g.setColor(bg)
-                t.background = g
-                t.setOnClickListener { click() }
-                return t
-            }
-
-            val box = LinearLayout(ctx)
-            box.orientation = LinearLayout.VERTICAL
-            box.setPadding((18 * d).toInt(), (14 * d).toInt(), (18 * d).toInt(), (14 * d).toInt())
-            val bg = GradientDrawable()
-            bg.cornerRadius = 20 * d
-            bg.setColor(if (tele) Color.parseColor("#B3261E") else Color.parseColor("#1F4E79"))
-            box.background = bg
-
-            val title = TextView(ctx)
-            title.text = name
-            title.setTextColor(Color.WHITE)
-            title.textSize = 20f
-            box.addView(title)
-
-            val sub = TextView(ctx)
-            sub.text = if (circ != null) raw + "  |  " + circ else raw
-            sub.setTextColor(Color.parseColor("#DDEBFF"))
-            sub.textSize = 14f
-            box.addView(sub)
-
-            if (tele) {
-                val badge = TextView(ctx)
-                badge.text = "Telemarketing / Spam"
-                badge.setTextColor(Color.WHITE)
-                badge.textSize = 14f
-                badge.setPadding(0, (6 * d).toInt(), 0, 0)
-                box.addView(badge)
-            }
-
-            val row = LinearLayout(ctx)
-            row.orientation = LinearLayout.HORIZONTAL
-            row.setPadding(0, (12 * d).toInt(), 0, 0)
-            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            lp.rightMargin = (8 * d).toInt()
-            row.addView(pill("Reject", Color.WHITE, Color.parseColor("#B3261E")) {
-                try {
-                    if (call.state == Call.STATE_RINGING) call.reject(false, null) else call.disconnect()
-                } catch (e: Throwable) {
-                }
-                hide()
-            }, lp)
-            val lp2 = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            row.addView(pill("Band karo (X)", Color.parseColor("#33FFFFFF"), Color.WHITE) { hide() }, lp2)
-            box.addView(row)
-
-            val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else WindowManager.LayoutParams.TYPE_PHONE
-            val w = ctx.resources.displayMetrics.widthPixels - (24 * d).toInt()
-            val p = WindowManager.LayoutParams(
-                w, WindowManager.LayoutParams.WRAP_CONTENT, type,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT
-            )
-            p.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            p.y = (60 * d).toInt()
-            wm = ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            wm?.addView(box, p)
-            view = box
-        } catch (e: Throwable) {
         }
     }
 }
