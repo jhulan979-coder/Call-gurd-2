@@ -17,7 +17,7 @@ jobs:
           for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page; do
             if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
-          for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity; do
+          for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity DialerRole; do
             [ -f native/$k.kt ] || cp $k.kt native/$k.kt || cp .github/workflows/$k.kt native/$k.kt || { echo "$k.kt NAHI MILI"; exit 1; }
           done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
@@ -70,6 +70,43 @@ jobs:
           grep -q "com.jhulan.callguard" android/app/build.gradle* || { echo "PACKAGE RENAME FAIL"; exit 1; }
           grep -q 'android:label="Call Guard"' android/app/src/main/AndroidManifest.xml || echo "WARNING: app ka naam badla nahi"
 
+      - name: App icon
+        run: |
+          R=android/app/src/main/res
+          mkdir -p $R/drawable $R/values $R/mipmap-anydpi-v26
+          cat > $R/values/cg_colors.xml << 'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <color name="cg_icon_bg">#1565C0</color>
+          </resources>
+          XML
+          cat > $R/drawable/cg_icon_fg.xml << 'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path
+                  android:fillColor="#FFFFFF"
+                  android:pathData="M54,28 L77,36 V54 C77,67 67,77 54,82 C41,77 31,67 31,54 V36 Z"/>
+              <path
+                  android:strokeColor="#1565C0"
+                  android:strokeWidth="6"
+                  android:strokeLineCap="round"
+                  android:strokeLineJoin="round"
+                  android:pathData="M43,54 L51,62 L65,46"/>
+          </vector>
+          XML
+          cat > $R/mipmap-anydpi-v26/ic_launcher.xml << 'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/cg_icon_bg"/>
+              <foreground android:drawable="@drawable/cg_icon_fg"/>
+          </adaptive-icon>
+          XML
+          test -f $R/mipmap-anydpi-v26/ic_launcher.xml || { echo "ICON FAIL"; exit 1; }
+
       - name: Add phone number library
         run: |
           for g in android/app/build.gradle.kts android/app/build.gradle; do
@@ -85,10 +122,16 @@ jobs:
           F=android/app/src/main/kotlin/com/example/call_guard
           sed -i 's#if (spam) speakSpam()#if (spam \&\& getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.spamVoice", true)) speakSpam()#' $F/CallGuardScreeningService.kt
           sed -i 's#val label = if (n.length == 10) findLabel(n) else null#val label = if (n.length == 10 \&\& getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.autoBlock", true)) findLabel(n) else null#' $F/CallGuardScreeningService.kt
+          sed -i 's#^\( *\)show("callguard_info"#\1if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.infoPopup", true)) show("callguard_info"#' $F/CallGuardScreeningService.kt
+          sed -i 's#^\( *\)show("callguard_alerts"#\1if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.blockNotif", true)) show("callguard_alerts"#' $F/CallGuardScreeningService.kt
           sed -i 's#^            startFlip()$#            if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.flip", true)) startFlip()#' $F/CallGuardInCallService.kt
+          sed -i 's#"requestNotificationPermission" -> requestNotif(result)#"requestNotificationPermission" -> requestNotif(result)\n                    "isDefaultDialer" -> result.success(DialerRole.isDefault(this))\n                    "requestDialerRole" -> { DialerRole.request(this); result.success(true) }#' $F/MainActivity.kt
           grep -q "flutter.spamVoice" $F/CallGuardScreeningService.kt || echo "WARNING: spamVoice switch jura nahi"
           grep -q "flutter.autoBlock" $F/CallGuardScreeningService.kt || echo "WARNING: autoBlock switch jura nahi"
+          grep -q "flutter.infoPopup" $F/CallGuardScreeningService.kt || echo "WARNING: infoPopup switch jura nahi"
+          grep -q "flutter.blockNotif" $F/CallGuardScreeningService.kt || echo "WARNING: blockNotif switch jura nahi"
           grep -q "flutter.flip" $F/CallGuardInCallService.kt || echo "WARNING: flip switch jura nahi"
+          grep -q "requestDialerRole" $F/MainActivity.kt || echo "WARNING: default button jura nahi"
           echo "NATIVE OK"
 
       - name: Fixed signing key
