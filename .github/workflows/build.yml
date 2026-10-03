@@ -41,6 +41,8 @@ jobs:
           grep -q "google_search" lib/core.dart || echo "WARNING: web search jura nahi"
           grep -q "web search karke" lib/core.dart || echo "WARNING: AI prompt badla nahi"
           echo "PREPARE OK"
+          sed -i "s#Chhota jawab do aur batao mujhe kya karna chahiye.#Ye number kis telecom circle (state) aur operator ka hai, web search se batao, pakka na ho to saaf bolo. Chhota jawab do aur batao mujhe kya karna chahiye.#" lib/tabs.dart lib/calls_tab.dart
+          grep -q "telecom circle" lib/tabs.dart || echo "WARNING: state prompt badla nahi"
 
       - uses: actions/setup-java@v4
         with:
