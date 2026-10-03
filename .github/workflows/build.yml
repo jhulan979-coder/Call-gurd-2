@@ -33,9 +33,6 @@ jobs:
           sed -i 's/SettingsPage/SettingsScreen/g' lib/settings_page.dart
           sed -i 's/const SettingsPage()/const SettingsScreen()/g' lib/main.dart
           grep -q "const SettingsScreen()" lib/main.dart || { echo "SETTINGS PATCH FAIL"; exit 1; }
-          sed -i "s#'blockNotif': true,#'blockNotif': true,\n    'onlineCircle': true,#" lib/settings_page.dart
-          sed -i "s#'Call reject hone par notification'),#'Call reject hone par notification'),\n          _sw('onlineCircle', 'Unknown number ka state (online AI)', 'Gemini API key se. Number Google ko jata hai'),#" lib/settings_page.dart
-          grep -q "onlineCircle" lib/settings_page.dart || echo "WARNING: state switch jura nahi"
           sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
           grep -q "FlutterPhoneDirectCaller" lib/calls_tab.dart || { echo "CALLS PATCH FAIL"; exit 1; }
@@ -132,10 +129,15 @@ jobs:
           sed -i 's#onTap: () => showModalBottomSheet(#onLongPress: () => _delete(c),\n                  onTap: () => showModalBottomSheet(#' lib/main.dart
           awk '/^ *IconData _typeIcon\(int t\) \{/{while((getline l < "/tmp/del_calls.dart")>0) print l} {print}' lib/calls_tab.dart > lib/calls_tab.tmp && mv lib/calls_tab.tmp lib/calls_tab.dart
           sed -i '0,/onTap: () => _open(c),/s//onLongPress: () => _deleteCall(c),\n                          onTap: () => _open(c),/' lib/calls_tab.dart
+          sed -i "s#Text('Haan, hatao')#Text('Yes')#" lib/main.dart lib/calls_tab.dart
+          sed -i "s#Text('Haan, delete karo')#Text('Yes')#" lib/main.dart
+          sed -i "s#const Text('Nahi')#const Text('No')#" lib/main.dart lib/calls_tab.dart
+          sed -i "s#Call history se hatao?#Call history se delete karein?#" lib/main.dart lib/calls_tab.dart
           grep -q "onLongPress: () => _delete(c)" lib/main.dart || echo "WARNING: home me delete jura nahi"
           grep -q "Future<void> _delete(CallItem c)" lib/main.dart || echo "WARNING: home delete function jura nahi"
           grep -q "onLongPress: () => _deleteCall(c)" lib/calls_tab.dart || echo "WARNING: contacts tab me delete jura nahi"
           grep -q "Future<void> _deleteCall(CallItem c)" lib/calls_tab.dart || echo "WARNING: calls delete function jura nahi"
+          grep -q "Text('Yes')" lib/main.dart || echo "WARNING: Yes No badla nahi"
           echo "PREPARE OK"
 
       - uses: actions/setup-java@v4
@@ -220,6 +222,8 @@ jobs:
           F=android/app/src/main/kotlin/com/example/call_guard
           sed -i 's#if (spam) speakSpam()#if (spam \&\& getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.spamVoice", true)) speakSpam()#' $F/CallGuardScreeningService.kt
           sed -i 's#val label = if (n.length == 10) findLabel(n) else null#val label = if (n.length == 10 \&\& getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.autoBlock", true)) findLabel(n) else null#' $F/CallGuardScreeningService.kt
+          sed -i 's#if (label != null) {#val sp = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)\n                val abOn = sp.getBoolean("flutter.autoBlock", true)\n                val label2 = label ?: (if (!abOn) null else if ((n.startsWith("140") || n.startsWith("160")) \&\& sp.getBoolean("flutter.blockTele", false)) "Telemarketing" else if (raw.isEmpty() \&\& sp.getBoolean("flutter.blockHidden", false)) "Hidden number" else if (raw.startsWith("+") \&\& !raw.startsWith("+91") \&\& sp.getBoolean("flutter.blockIntl", false)) "International" else null)\n                if (label2 != null) {#' $F/CallGuardScreeningService.kt
+          sed -i 's#(\$label)#(\$label2)#' $F/CallGuardScreeningService.kt
           sed -i 's#^\( *\)show("callguard_info"#\1if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.infoPopup", true)) show("callguard_info"#' $F/CallGuardScreeningService.kt
           sed -i 's#^\( *\)show("callguard_alerts"#\1if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.blockNotif", true)) show("callguard_alerts"#' $F/CallGuardScreeningService.kt
           sed -i 's#^            startFlip()$#            if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.flip", true)) startFlip()#' $F/CallGuardInCallService.kt
@@ -228,6 +232,8 @@ jobs:
           sed -i 's#stateView?.text = if (tag != null) base + "  |  SPAM - " + tag else base#stateView?.text = (if (tag != null) base + "  |  SPAM - " + tag else base) + CallHolder.circleFor(num)#' $F/InCallActivity.kt
           grep -q "flutter.spamVoice" $F/CallGuardScreeningService.kt || echo "WARNING: spamVoice switch jura nahi"
           grep -q "flutter.autoBlock" $F/CallGuardScreeningService.kt || echo "WARNING: autoBlock switch jura nahi"
+          grep -q "flutter.blockTele" $F/CallGuardScreeningService.kt || echo "WARNING: blockTele switch jura nahi"
+          grep -q "(\$label2)" $F/CallGuardScreeningService.kt || echo "WARNING: label2 notification me nahi laga"
           grep -q "flutter.infoPopup" $F/CallGuardScreeningService.kt || echo "WARNING: infoPopup switch jura nahi"
           grep -q "flutter.blockNotif" $F/CallGuardScreeningService.kt || echo "WARNING: blockNotif switch jura nahi"
           grep -q "flutter.flip" $F/CallGuardInCallService.kt || echo "WARNING: flip switch jura nahi"
