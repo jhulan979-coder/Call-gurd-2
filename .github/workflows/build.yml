@@ -14,7 +14,7 @@ jobs:
       - name: Prepare files
         run: |
           mkdir -p lib native
-          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab; do
+          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page; do
             if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
           for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity; do
@@ -22,7 +22,7 @@ jobs:
           done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
           sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'sms_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
-          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';#" lib/main.dart
+          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';#" lib/main.dart
           sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CommHub(),#" lib/main.dart
           sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
           sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.forum_outlined), label: 'Inbox'),#" lib/main.dart
@@ -30,9 +30,12 @@ jobs:
           for k in "sms_tab.dart" "const CommHub()" "Icons.forum_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "receptionist_tab.dart"; do
             grep -q "$k" lib/main.dart || { echo "PATCH FAIL: $k"; exit 1; }
           done
+          awk '/^class SettingsPage extends StatefulWidget/{skip=1} /^void showDialPad/{skip=0} !skip' lib/main.dart > lib/main.tmp && mv lib/main.tmp lib/main.dart
+          grep -q "class DialPadSheet" lib/main.dart || { echo "MAIN SETTINGS PATCH FAIL"; exit 1; }
           sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
           grep -q "FlutterPhoneDirectCaller" lib/calls_tab.dart || { echo "CALLS PATCH FAIL"; exit 1; }
+          echo "PREPARE OK"
 
       - uses: actions/setup-java@v4
         with:
@@ -74,6 +77,14 @@ jobs:
           rm -f $(find android/app/src/main -name 'MainActivity.*')
           mkdir -p android/app/src/main/kotlin/com/example/call_guard
           cp native/*.kt android/app/src/main/kotlin/com/example/call_guard/
+          F=android/app/src/main/kotlin/com/example/call_guard
+          sed -i 's#if (spam) speakSpam()#if (spam \&\& getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.spamVoice", true)) speakSpam()#' $F/CallGuardScreeningService.kt
+          sed -i 's#val label = if (n.length == 10) findLabel(n) else null#val label = if (n.length == 10 \&\& getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.autoBlock", true)) findLabel(n) else null#' $F/CallGuardScreeningService.kt
+          sed -i 's#^            startFlip()$#            if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.flip", true)) startFlip()#' $F/CallGuardInCallService.kt
+          grep -q "flutter.spamVoice" $F/CallGuardScreeningService.kt || echo "WARNING: spamVoice switch jura nahi"
+          grep -q "flutter.autoBlock" $F/CallGuardScreeningService.kt || echo "WARNING: autoBlock switch jura nahi"
+          grep -q "flutter.flip" $F/CallGuardInCallService.kt || echo "WARNING: flip switch jura nahi"
+          echo "NATIVE OK"
 
       - name: Fixed signing key
         run: |
