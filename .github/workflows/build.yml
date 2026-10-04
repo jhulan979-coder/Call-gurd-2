@@ -14,29 +14,34 @@ jobs:
       - name: Prepare files
         run: |
           mkdir -p lib native
-          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page ai_extra invite; do
+          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page ai_extra invite applock; do
             if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
           for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity DialerRole CircleLookup; do
             [ -f native/$k.kt ] || cp $k.kt native/$k.kt || cp .github/workflows/$k.kt native/$k.kt || { echo "$k.kt NAHI MILI"; exit 1; }
           done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
+          grep -q "crypto:" pubspec.yaml || sed -i 's#^\(  flutter_tts:.*\)$#\1\n  crypto: ^3.0.3#' pubspec.yaml
+          grep -q "crypto:" pubspec.yaml || { echo "CRYPTO PACKAGE NAHI JURA"; exit 1; }
           sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
-          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';\nimport 'ai_extra.dart';\nimport 'invite.dart';#" lib/main.dart
+          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';\nimport 'ai_extra.dart';\nimport 'invite.dart';\nimport 'applock.dart';#" lib/main.dart
+          sed -i "s#home: const HomePage(),#builder: (context, child) => AppLockGate(child: child ?? const SizedBox.shrink()),\n      home: const HomePage(),#" lib/main.dart
           sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CallsTab(),#" lib/main.dart
           sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
           sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.contacts_outlined), label: 'Contacts'),#" lib/main.dart
           sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),\n            const AiToolsCard(),\n            const SizedBox(height: 8),\n            const InviteCard(),\n            const SizedBox(height: 8),#" lib/main.dart
-          for k in "receptionist_tab.dart" "const CallsTab()" "Icons.contacts_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "const AiToolsCard()" "const InviteCard()"; do
+          for k in "receptionist_tab.dart" "const CallsTab()" "Icons.contacts_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "const AiToolsCard()" "const InviteCard()" "AppLockGate("; do
             grep -q "$k" lib/main.dart || { echo "PATCH FAIL: $k"; exit 1; }
           done
           sed -i 's/SettingsPage/SettingsScreen/g' lib/settings_page.dart
           sed -i 's/const SettingsPage()/const SettingsScreen()/g' lib/main.dart
           grep -q "const SettingsScreen()" lib/main.dart || { echo "SETTINGS PATCH FAIL"; exit 1; }
+          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'applock.dart';#" lib/settings_page.dart
+          sed -i "s#_head('AI'),#ListTile(leading: const Icon(Icons.lock_outline), title: const Text('App lock (PIN)'), subtitle: const Text('App kholne se pehle PIN maange'), onTap: () => showPinSetup(context)),\n          _head('AI'),#" lib/settings_page.dart
+          grep -q "showPinSetup" lib/settings_page.dart || echo "WARNING: Settings me App lock ki row nahi judi"
           sed -i "s#'onlineCircle': true,#'onlineCircle': false,#" lib/settings_page.dart
           sed -i "s#'blockIntl': false,#'blockIntl': false,\n  'spamAnswer': false,#" lib/settings_page.dart
           sed -i "s#'Call reject hone par notification'),#'Call reject hone par notification'),\n          _sw('spamAnswer', 'Spam call apne aap uthao (beta)', 'Telemarketing 140/160 aur block list ki call reject ki jagah uthayi jayegi, chup rahegi, 30 second baad kategi'),#" lib/settings_page.dart
-          grep -q "'spamAnswer': false" lib/settings_page.dart || echo "WARNING: spamAnswer default nahi juda"
           grep -q "_sw('spamAnswer'" lib/settings_page.dart || echo "WARNING: spamAnswer switch nahi juda"
           sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
@@ -179,21 +184,25 @@ jobs:
         run: |
           flutter create --platforms=android --project-name call_guard tmp_app
           cp -r tmp_app/android android
-          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CALL_PHONE"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.WRITE_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>\n    <application#' android/app/src/main/AndroidManifest.xml
-          if grep -q "<queries>" android/app/src/main/AndroidManifest.xml; then
-            sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' android/app/src/main/AndroidManifest.xml
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CALL_PHONE"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.WRITE_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>\n    <application#' $M
+          if grep -q "<queries>" $M; then
+            sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' $M
           else
-            sed -i 's#<application#<queries><intent><action android:name="android.speech.RecognitionService"/></intent><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>\n    <application#' android/app/src/main/AndroidManifest.xml
+            sed -i 's#<application#<queries><intent><action android:name="android.speech.RecognitionService"/></intent><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>\n    <application#' $M
           fi
-          sed -i 's#</activity>#    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/><data android:scheme="tel"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="tel"/></intent-filter>\n    </activity>#' android/app/src/main/AndroidManifest.xml
-          sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    <service android:name="com.example.call_guard.CallGuardInCallService" android:permission="android.permission.BIND_INCALL_SERVICE" android:exported="true"><meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true"/><intent-filter><action android:name="android.telecom.InCallService"/></intent-filter></service>\n    <activity android:name="com.example.call_guard.InCallActivity" android:exported="false" android:launchMode="singleInstance" android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>\n    </application>#' android/app/src/main/AndroidManifest.xml
-          sed -i 's/android:label="[^"]*"/android:label="Call Guard"/' android/app/src/main/AndroidManifest.xml
+          sed -i 's#</activity>#    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/><data android:scheme="tel"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="tel"/></intent-filter>\n    </activity>#' $M
+          sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    <service android:name="com.example.call_guard.CallGuardInCallService" android:permission="android.permission.BIND_INCALL_SERVICE" android:exported="true"><meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true"/><intent-filter><action android:name="android.telecom.InCallService"/></intent-filter></service>\n    <activity android:name="com.example.call_guard.InCallActivity" android:exported="false" android:launchMode="singleInstance" android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>\n    </application>#' $M
+          sed -i 's/android:label="[^"]*"/android:label="Call Guard"/' $M
+          grep -q "xmlns:tools" $M || sed -i 's#<manifest #<manifest xmlns:tools="http://schemas.android.com/tools" #' $M
+          grep -q "allowBackup" $M || sed -i 's#<application#<application android:allowBackup="false" android:usesCleartextTraffic="false" tools:replace="android:allowBackup,android:usesCleartextTraffic"#' $M
           for g in android/app/build.gradle.kts android/app/build.gradle; do [ -f $g ] && sed -i 's/applicationId .*/applicationId = "com.jhulan.callguard"/' $g; done
-          grep -q "CallGuardScreeningService" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST SCREENING FAIL"; exit 1; }
-          grep -q "CallGuardInCallService" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST INCALL FAIL"; exit 1; }
-          grep -q "android.intent.action.DIAL" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST DIAL FAIL"; exit 1; }
-          grep -q "READ_CALL_LOG" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST CALLLOG FAIL"; exit 1; }
-          grep -q "WRITE_CALL_LOG" android/app/src/main/AndroidManifest.xml || { echo "MANIFEST WRITE CALLLOG FAIL"; exit 1; }
+          grep -q "CallGuardScreeningService" $M || { echo "MANIFEST SCREENING FAIL"; exit 1; }
+          grep -q "CallGuardInCallService" $M || { echo "MANIFEST INCALL FAIL"; exit 1; }
+          grep -q "android.intent.action.DIAL" $M || { echo "MANIFEST DIAL FAIL"; exit 1; }
+          grep -q "READ_CALL_LOG" $M || { echo "MANIFEST CALLLOG FAIL"; exit 1; }
+          grep -q "WRITE_CALL_LOG" $M || { echo "MANIFEST WRITE CALLLOG FAIL"; exit 1; }
+          grep -q 'allowBackup="false"' $M || echo "WARNING: backup band nahi hua"
           grep -q "com.jhulan.callguard" android/app/build.gradle* || { echo "PACKAGE RENAME FAIL"; exit 1; }
 
       - name: App icon
@@ -259,7 +268,6 @@ jobs:
           grep -q "flutter.autoBlock" $F/CallGuardScreeningService.kt || echo "WARNING: autoBlock switch jura nahi"
           grep -q "flutter.blockTele" $F/CallGuardScreeningService.kt || echo "WARNING: blockTele switch jura nahi"
           grep -q "flutter.spamAnswer" $F/CallGuardScreeningService.kt || echo "WARNING: spamAnswer screening me nahi juda"
-          grep -q "flutter.flip" $F/CallGuardInCallService.kt || echo "WARNING: flip switch jura nahi"
           grep -q "flutter.spamAnswer" $F/CallGuardInCallService.kt || echo "WARNING: spamAnswer incall me nahi juda"
           grep -q "requestDialerRole" $F/MainActivity.kt || echo "WARNING: default button jura nahi"
           grep -q "deleteCalls" $F/MainActivity.kt || echo "WARNING: delete native jura nahi"
@@ -286,7 +294,7 @@ jobs:
 
       - run: flutter pub get
 
-      - run: flutter build apk --release --build-number=${{ github.run_number }}
+      - run: flutter build apk --release --obfuscate --split-debug-info=build/symbols --build-number=${{ github.run_number }}
 
       - name: Show signing fingerprint
         run: |
@@ -308,7 +316,7 @@ jobs:
           sed -i 's#create("cg") {#create("up") {\n            storeFile = file("up.jks")\n            storePassword = System.getenv("UP_PASS")\n            keyAlias = "upload"\n            keyPassword = System.getenv("UP_PASS")\n        }\n        create("cg") {#' $K
           sed -i 's#signingConfigs.getByName("cg")#signingConfigs.getByName("up")#' $K
           grep -q 'getByName("up")' $K || { echo "BUNDLE: up config laga nahi"; exit 1; }
-          flutter build appbundle --release --build-number=${{ github.run_number }}
+          flutter build appbundle --release --obfuscate --split-debug-info=build/symbols --build-number=${{ github.run_number }}
           keytool -printcert -jarfile build/app/outputs/bundle/release/app-release.aab | grep -i "SHA256" || echo "bundle fingerprint nahi mila"
 
       - uses: actions/upload-artifact@v4
