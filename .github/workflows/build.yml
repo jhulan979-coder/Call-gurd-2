@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Call Guard
 
 on:
   workflow_dispatch:
@@ -14,31 +14,55 @@ jobs:
       - name: Prepare files
         run: |
           mkdir -p lib native
-          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page ai_extra invite applock; do
-            if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
+          cp .github/workflows/*.dart lib/ 2>/dev/null || true
+          cp ./*.dart lib/
+          for f in main core tabs ai_tab calls_tab protect receptionist_tab settings_page; do
+            test -f lib/$f.dart || { echo "$f.dart NAHI MILI"; exit 1; }
           done
           for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity DialerRole CircleLookup; do
             [ -f native/$k.kt ] || cp $k.kt native/$k.kt || cp .github/workflows/$k.kt native/$k.kt || { echo "$k.kt NAHI MILI"; exit 1; }
           done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
-          grep -q "crypto:" pubspec.yaml || sed -i 's#^\(  flutter_tts:.*\)$#\1\n  crypto: ^3.0.3#' pubspec.yaml
-          grep -q "crypto:" pubspec.yaml || { echo "CRYPTO PACKAGE NAHI JURA"; exit 1; }
           sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
-          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';\nimport 'ai_extra.dart';\nimport 'invite.dart';\nimport 'applock.dart';#" lib/main.dart
-          sed -i "s#home: const HomePage(),#builder: (context, child) => AppLockGate(child: child ?? const SizedBox.shrink()),\n      home: const HomePage(),#" lib/main.dart
+          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';#" lib/main.dart
           sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CallsTab(),#" lib/main.dart
           sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
           sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.contacts_outlined), label: 'Contacts'),#" lib/main.dart
-          sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),\n            const AiToolsCard(),\n            const SizedBox(height: 8),\n            const InviteCard(),\n            const SizedBox(height: 8),#" lib/main.dart
-          for k in "receptionist_tab.dart" "const CallsTab()" "Icons.contacts_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "const AiToolsCard()" "const InviteCard()" "AppLockGate("; do
+          CARDS="\n            const ProtectCard(),\n            const SizedBox(height: 8),"
+          if [ -f lib/ai_extra.dart ]; then
+            sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'ai_extra.dart';#" lib/main.dart
+            CARDS="$CARDS\n            const AiToolsCard(),\n            const SizedBox(height: 8),"
+          fi
+          if [ -f lib/invite.dart ]; then
+            sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'invite.dart';#" lib/main.dart
+            CARDS="$CARDS\n            const InviteCard(),\n            const SizedBox(height: 8),"
+          fi
+          sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),$CARDS#" lib/main.dart
+          W="child ?? const SizedBox.shrink()"
+          if [ -f lib/applock.dart ]; then
+            sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'applock.dart';#" lib/main.dart
+            W="AppLockGate(child: $W)"
+            grep -q "crypto:" pubspec.yaml || sed -i 's#^\(  flutter_tts:.*\)$#\1\n  crypto: ^3.0.3#' pubspec.yaml
+            grep -q "crypto:" pubspec.yaml || { echo "CRYPTO PACKAGE NAHI JURA"; exit 1; }
+            sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'applock.dart';#" lib/settings_page.dart
+            sed -i "s#_head('AI'),#ListTile(leading: const Icon(Icons.lock_outline), title: const Text('App lock (PIN)'), subtitle: const Text('App kholne se pehle PIN maange'), onTap: () => showPinSetup(context)),\n          _head('AI'),#" lib/settings_page.dart
+            grep -q "showPinSetup" lib/settings_page.dart || echo "WARNING: Settings me App lock ki row nahi judi"
+          else
+            echo "APPLOCK FILE NAHI HAI, skip"
+          fi
+          if [ -f lib/onboard.dart ]; then
+            sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'onboard.dart';#" lib/main.dart
+            W="OnboardGate(child: $W)"
+          else
+            echo "ONBOARD FILE NAHI HAI, skip"
+          fi
+          sed -i "s#home: const HomePage(),#builder: (context, child) => $W,\n      home: const HomePage(),#" lib/main.dart
+          for k in "receptionist_tab.dart" "const CallsTab()" "Icons.contacts_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "builder: (context, child)"; do
             grep -q "$k" lib/main.dart || { echo "PATCH FAIL: $k"; exit 1; }
           done
           sed -i 's/SettingsPage/SettingsScreen/g' lib/settings_page.dart
           sed -i 's/const SettingsPage()/const SettingsScreen()/g' lib/main.dart
           grep -q "const SettingsScreen()" lib/main.dart || { echo "SETTINGS PATCH FAIL"; exit 1; }
-          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'applock.dart';#" lib/settings_page.dart
-          sed -i "s#_head('AI'),#ListTile(leading: const Icon(Icons.lock_outline), title: const Text('App lock (PIN)'), subtitle: const Text('App kholne se pehle PIN maange'), onTap: () => showPinSetup(context)),\n          _head('AI'),#" lib/settings_page.dart
-          grep -q "showPinSetup" lib/settings_page.dart || echo "WARNING: Settings me App lock ki row nahi judi"
           sed -i "s#'onlineCircle': true,#'onlineCircle': false,#" lib/settings_page.dart
           sed -i "s#'blockIntl': false,#'blockIntl': false,\n  'spamAnswer': false,#" lib/settings_page.dart
           sed -i "s#'Call reject hone par notification'),#'Call reject hone par notification'),\n          _sw('spamAnswer', 'Spam call apne aap uthao (beta)', 'Telemarketing 140/160 aur block list ki call reject ki jagah uthayi jayegi, chup rahegi, 30 second baad kategi'),#" lib/settings_page.dart
@@ -144,8 +168,7 @@ jobs:
           sed -i "s#Text('Haan, delete karo')#Text('Yes')#" lib/main.dart
           sed -i "s#const Text('Nahi')#const Text('No')#" lib/main.dart lib/calls_tab.dart
           sed -i "s#Call history se hatao?#Call history se delete karein?#" lib/main.dart lib/calls_tab.dart
-          if [ -f lang.dart ] || [ -f .github/workflows/lang.dart ]; then
-            if [ -f lang.dart ]; then cp lang.dart lib/lang.dart; else cp .github/workflows/lang.dart lib/lang.dart; fi
+          if [ -f lib/lang.dart ]; then
             for f in main tabs calls_tab; do
               sed -i "s#import 'package:flutter/material.dart';#import 'package:flutter/material.dart' hide Text;\nimport 'lang.dart';#" lib/$f.dart
               grep -q "import 'lang.dart'" lib/$f.dart || echo "WARNING: $f me language nahi juda"
