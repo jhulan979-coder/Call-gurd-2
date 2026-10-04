@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -20,9 +21,11 @@ import android.speech.tts.TextToSpeech
 import android.telecom.Call
 import android.telecom.InCallService
 import android.telecom.TelecomManager
+import android.telecom.VideoProfile
 import android.widget.Toast
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import com.google.i18n.phonenumbers.geocoding.PhoneNumberOfflineGeocoder
+import org.json.JSONArray
 import java.util.Locale
 
 const val CG_NOTIF_ID = 7001
@@ -80,6 +83,16 @@ object CallHolder {
 class CallGuardInCallService : InCallService() {
     private var sm: SensorManager? = null
     private var ttsRef: TextToSpeech? = null
+    private val autoCalls = HashSet<Call>()
+    private val h = Handler(Looper.getMainLooper())
+
+    private fun prefs(): SharedPreferences {
+        return getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+    }
+
+    private fun flipOn(): Boolean {
+        return prefs().getBoolean("flutter.flip", true)
+    }
 
     private val flip = object : SensorEventListener {
         override fun onSensorChanged(e: SensorEvent) {
@@ -110,14 +123,27 @@ class CallGuardInCallService : InCallService() {
     private val cb = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) {
             if (state != Call.STATE_RINGING) {
-                cancelNotif()
-                stopFlip()
+                this@CallGuardInCallService.cancelNotif()
+                this@CallGuardInCallService.stopFlip()
             }
             if (state == Call.STATE_ACTIVE) {
-                this@CallGuardInCallService.stopSpeech()
-                try {
-                    this@CallGuardInCallService.setMuted(false)
-                } catch (x: Throwable) {
+                if (this@CallGuardInCallService.autoCalls.contains(call)) {
+                    try {
+                        this@CallGuardInCallService.setMuted(true)
+                    } catch (x: Throwable) {
+                    }
+                    this@CallGuardInCallService.h.postDelayed({
+                        try {
+                            call.disconnect()
+                        } catch (x: Throwable) {
+                        }
+                    }, 30000)
+                } else {
+                    this@CallGuardInCallService.stopSpeech()
+                    try {
+                        this@CallGuardInCallService.setMuted(false)
+                    } catch (x: Throwable) {
+                    }
                 }
             }
         }
@@ -129,9 +155,13 @@ class CallGuardInCallService : InCallService() {
         CallHolder.service = this
         call.registerCallback(cb)
         if (call.state == Call.STATE_RINGING) {
-            showIncoming(call)
-            announce(call)
-            startFlip()
+            if (shouldAutoAnswer(call)) {
+                startAutoAnswer(call)
+            } else {
+                showIncoming(call)
+                announce(call)
+                if (flipOn()) startFlip()
+            }
         } else {
             openUi()
         }
@@ -143,6 +173,7 @@ class CallGuardInCallService : InCallService() {
             call.unregisterCallback(cb)
         } catch (e: Exception) {
         }
+        autoCalls.remove(call)
         if (CallHolder.call == call) {
             CallHolder.call = null
         }
@@ -155,6 +186,74 @@ class CallGuardInCallService : InCallService() {
         super.onDestroy()
         stopFlip()
         stopSpeech()
+    }
+
+    private fun isSpamNum(n: String): Boolean {
+        if (n.startsWith("140") || n.startsWith("160")) return true
+        try {
+            val s = prefs().getString("flutter.blocked_v2", null) ?: return false
+            val arr = JSONArray(s)
+            for (i in 0 until arr.length()) {
+                if (arr.getJSONObject(i).optString("n") == n) return true
+            }
+        } catch (e: Throwable) {
+        }
+        return false
+    }
+
+    private fun shouldAutoAnswer(call: Call): Boolean {
+        try {
+            if (!prefs().getBoolean("flutter.spamAnswer", false)) return false
+            val raw = call.details.handle?.schemeSpecificPart ?: ""
+            val digits = raw.filter { it.isDigit() }
+            val n = if (digits.length > 10) digits.substring(digits.length - 10) else digits
+            if (n.length != 10) return false
+            val dn = call.details.callerDisplayName
+            if (!dn.isNullOrEmpty()) return false
+            val saved = CallHolder.lookup(this, raw)
+            if (!saved.isNullOrEmpty()) return false
+            return isSpamNum(n)
+        } catch (e: Throwable) {
+        }
+        return false
+    }
+
+    private fun startAutoAnswer(call: Call) {
+        autoCalls.add(call)
+        try {
+            val tm = getSystemService(Context.TELECOM_SERVICE) as TelecomManager
+            tm.silenceRinger()
+        } catch (x: Throwable) {
+        }
+        info("Spam call apne aap uthayi", CallHolder.label(this, call))
+        h.postDelayed({
+            try {
+                call.answer(VideoProfile.STATE_AUDIO_ONLY)
+            } catch (x: Throwable) {
+            }
+        }, 600)
+    }
+
+    private fun info(title: String, text: String) {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(
+                    NotificationChannel("cg_auto", "Spam auto answer", NotificationManager.IMPORTANCE_DEFAULT)
+                )
+            }
+            val b = if (Build.VERSION.SDK_INT >= 26) {
+                Notification.Builder(this, "cg_auto")
+            } else {
+                Notification.Builder(this)
+            }
+            b.setSmallIcon(android.R.drawable.ic_menu_call)
+            b.setContentTitle(title)
+            b.setContentText(text)
+            b.setAutoCancel(true)
+            nm.notify((System.currentTimeMillis() % 100000).toInt() + 100, b.build())
+        } catch (e: Exception) {
+        }
     }
 
     private fun startFlip() {
@@ -189,8 +288,7 @@ class CallGuardInCallService : InCallService() {
 
     private fun speak(text: String) {
         try {
-            val p = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            if (!p.getBoolean("flutter.announce", true)) return
+            if (!prefs().getBoolean("flutter.announce", true)) return
             stopSpeech()
             var t: TextToSpeech? = null
             t = TextToSpeech(applicationContext) { st ->
@@ -227,8 +325,7 @@ class CallGuardInCallService : InCallService() {
                 speak("Unknown number from " + off)
                 return
             }
-            val p = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            if (!p.getBoolean("flutter.onlineCircle", true) || n.length != 10) {
+            if (!prefs().getBoolean("flutter.onlineCircle", false) || n.length != 10) {
                 speak("Unknown number")
                 return
             }
