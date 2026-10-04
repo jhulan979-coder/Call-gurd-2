@@ -14,7 +14,7 @@ jobs:
       - name: Prepare files
         run: |
           mkdir -p lib native
-          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page ai_extra; do
+          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page ai_extra invite; do
             if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
           for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity DialerRole CircleLookup; do
@@ -22,12 +22,12 @@ jobs:
           done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
           sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
-          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';\nimport 'ai_extra.dart';#" lib/main.dart
+          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';\nimport 'ai_extra.dart';\nimport 'invite.dart';#" lib/main.dart
           sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CallsTab(),#" lib/main.dart
           sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
           sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.contacts_outlined), label: 'Contacts'),#" lib/main.dart
-          sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),\n            const AiToolsCard(),\n            const SizedBox(height: 8),#" lib/main.dart
-          for k in "receptionist_tab.dart" "const CallsTab()" "Icons.contacts_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "const AiToolsCard()"; do
+          sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),\n            const AiToolsCard(),\n            const SizedBox(height: 8),\n            const InviteCard(),\n            const SizedBox(height: 8),#" lib/main.dart
+          for k in "receptionist_tab.dart" "const CallsTab()" "Icons.contacts_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "const AiToolsCard()" "const InviteCard()"; do
             grep -q "$k" lib/main.dart || { echo "PATCH FAIL: $k"; exit 1; }
           done
           sed -i 's/SettingsPage/SettingsScreen/g' lib/settings_page.dart
