@@ -174,7 +174,7 @@ class _OnboardScreenState extends State<OnboardScreen>
         const SizedBox(height: 12),
         const Text('Call Guard ko in cheezon ki zaroorat padti hai:'),
         const SizedBox(height: 8),
-        _bullet(Icons.call_log_outlined == null ? Icons.call : Icons.history,
+                _bullet(Icons.history,
             'Call log: recent calls dikhane, spam pehchanne aur block hui calls ginne ke liye'),
         _bullet(Icons.contacts_outlined,
             'Contacts: call karne wale ka naam dikhane ke liye'),
