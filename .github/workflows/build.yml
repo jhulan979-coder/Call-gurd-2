@@ -14,7 +14,7 @@ jobs:
       - name: Prepare files
         run: |
           mkdir -p lib native
-          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page; do
+          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page ai_extra; do
             if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
           for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity DialerRole CircleLookup; do
@@ -22,12 +22,12 @@ jobs:
           done
           test -f pubspec.yaml || { echo "PUBSPEC NAHI MILI"; exit 1; }
           sed -i "s#import 'ai_tab.dart';#import 'ai_tab.dart';\nimport 'receptionist_tab.dart';#" lib/main.dart
-          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';#" lib/main.dart
+          sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'protect.dart';\nimport 'settings_page.dart';\nimport 'ai_extra.dart';#" lib/main.dart
           sed -i "s#const BlockedTab(),#const BlockedTab(),\n          const CallsTab(),#" lib/main.dart
           sed -i "s#const AiTab(),#const AiHub(),#" lib/main.dart
           sed -i "s#label: 'Blocked'),#label: 'Blocked'),\n          NavigationDestination(icon: Icon(Icons.contacts_outlined), label: 'Contacts'),#" lib/main.dart
-          sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),#" lib/main.dart
-          for k in "receptionist_tab.dart" "const CallsTab()" "Icons.contacts_outlined" "const ProtectCard()" "protect.dart" "const AiHub()"; do
+          sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),\n            const ProtectCard(),\n            const SizedBox(height: 8),\n            const AiToolsCard(),\n            const SizedBox(height: 8),#" lib/main.dart
+          for k in "receptionist_tab.dart" "const CallsTab()" "Icons.contacts_outlined" "const ProtectCard()" "protect.dart" "const AiHub()" "const AiToolsCard()"; do
             grep -q "$k" lib/main.dart || { echo "PATCH FAIL: $k"; exit 1; }
           done
           sed -i 's/SettingsPage/SettingsScreen/g' lib/settings_page.dart
@@ -37,7 +37,8 @@ jobs:
           sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
           grep -q "FlutterPhoneDirectCaller" lib/calls_tab.dart || { echo "CALLS PATCH FAIL"; exit 1; }
-          sed -i "s#Chhota jawab do aur batao mujhe kya karna chahiye.#Ye number kis telecom circle (state) aur operator ka hai, ye bhi batao, pakka na ho to saaf bolo. Chhota jawab do aur batao mujhe kya karna chahiye.#" lib/tabs.dart lib/calls_tab.dart
+          sed -i "s#Chhota jawab do aur batao mujhe kya karna chahiye.#Sabse pehli line me exactly likho SPAM SCORE: N/100 (0 matlab safe, 100 matlab pakka spam), phir ek line me wajah. Ye number kis telecom circle (state) aur operator ka hai, ye bhi batao, pakka na ho to saaf bolo. Chhota jawab do aur batao mujhe kya karna chahiye.#" lib/tabs.dart lib/calls_tab.dart
+          grep -q "SPAM SCORE" lib/tabs.dart || echo "WARNING: spam score prompt badla nahi"
           cat > native/CallLogOps.kt << 'KOTLIN'
           package com.example.call_guard
 
@@ -142,6 +143,18 @@ jobs:
             done
             sed -i "s#store.load();#store.load();\n    loadLang();#" lib/main.dart
             grep -q "loadLang();" lib/main.dart || echo "WARNING: loadLang nahi juda"
+            sed -i "1i import 'lang.dart' show langNotifier;" lib/core.dart
+            sed -i "s#{'text': system}#{'text': system + langHint()}#" lib/core.dart
+            cat >> lib/core.dart << 'DART'
+
+          String langHint() {
+            final l = langNotifier.value;
+            if (l == 'en') return ' Reply only in simple English.';
+            if (l == 'or') return ' Reply only in Odia, using Odia script.';
+            return '';
+          }
+          DART
+            grep -q "langHint()" lib/core.dart || echo "WARNING: AI bhasha hint nahi juda"
           else
             echo "LANG FILE NAHI HAI, bhasha wala hissa skip"
           fi
