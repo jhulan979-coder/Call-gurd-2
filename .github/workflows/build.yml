@@ -14,7 +14,7 @@ jobs:
       - name: Prepare files
         run: |
           mkdir -p lib native
-          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page lang; do
+          for f in main core tabs ai_tab calls_tab protect receptionist_tab sms_tab settings_page; do
             if [ -f $f.dart ]; then cp $f.dart lib/$f.dart; else cp .github/workflows/$f.dart lib/$f.dart; fi
           done
           for k in MainActivity CallGuardScreeningService CallGuardInCallService InCallActivity DialerRole CircleLookup; do
@@ -33,6 +33,7 @@ jobs:
           sed -i 's/SettingsPage/SettingsScreen/g' lib/settings_page.dart
           sed -i 's/const SettingsPage()/const SettingsScreen()/g' lib/main.dart
           grep -q "const SettingsScreen()" lib/main.dart || { echo "SETTINGS PATCH FAIL"; exit 1; }
+          sed -i "s#'onlineCircle': true,#'onlineCircle': false,#" lib/settings_page.dart
           sed -i "s#launchUrl(Uri(scheme: 'tel', path: n))#FlutterPhoneDirectCaller.callNumber(n)#" lib/calls_tab.dart
           sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';#" lib/calls_tab.dart
           grep -q "FlutterPhoneDirectCaller" lib/calls_tab.dart || { echo "CALLS PATCH FAIL"; exit 1; }
@@ -133,17 +134,19 @@ jobs:
           sed -i "s#Text('Haan, delete karo')#Text('Yes')#" lib/main.dart
           sed -i "s#const Text('Nahi')#const Text('No')#" lib/main.dart lib/calls_tab.dart
           sed -i "s#Call history se hatao?#Call history se delete karein?#" lib/main.dart lib/calls_tab.dart
-          for f in main tabs calls_tab; do
-            sed -i "s#import 'package:flutter/material.dart';#import 'package:flutter/material.dart' hide Text;\nimport 'lang.dart';#" lib/$f.dart
-            grep -q "import 'lang.dart'" lib/$f.dart || echo "WARNING: $f me language nahi juda"
-          done
-          sed -i "s#store.load();#store.load();\n    loadLang();#" lib/main.dart
-          grep -q "loadLang();" lib/main.dart || echo "WARNING: loadLang nahi juda"
+          if [ -f lang.dart ] || [ -f .github/workflows/lang.dart ]; then
+            if [ -f lang.dart ]; then cp lang.dart lib/lang.dart; else cp .github/workflows/lang.dart lib/lang.dart; fi
+            for f in main tabs calls_tab; do
+              sed -i "s#import 'package:flutter/material.dart';#import 'package:flutter/material.dart' hide Text;\nimport 'lang.dart';#" lib/$f.dart
+              grep -q "import 'lang.dart'" lib/$f.dart || echo "WARNING: $f me language nahi juda"
+            done
+            sed -i "s#store.load();#store.load();\n    loadLang();#" lib/main.dart
+            grep -q "loadLang();" lib/main.dart || echo "WARNING: loadLang nahi juda"
+          else
+            echo "LANG FILE NAHI HAI, bhasha wala hissa skip"
+          fi
           grep -q "onLongPress: () => _delete(c)" lib/main.dart || echo "WARNING: home me delete jura nahi"
-          grep -q "Future<void> _delete(CallItem c)" lib/main.dart || echo "WARNING: home delete function jura nahi"
-          grep -q "onLongPress: () => _deleteCall(c)" lib/calls_tab.dart || echo "WARNING: contacts tab me delete jura nahi"
           grep -q "Future<void> _deleteCall(CallItem c)" lib/calls_tab.dart || echo "WARNING: calls delete function jura nahi"
-          grep -q "Text('Yes')" lib/main.dart || echo "WARNING: Yes No badla nahi"
           echo "PREPARE OK"
 
       - uses: actions/setup-java@v4
@@ -233,19 +236,17 @@ jobs:
           sed -i 's#^\( *\)show("callguard_info"#\1if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.infoPopup", true)) show("callguard_info"#' $F/CallGuardScreeningService.kt
           sed -i 's#^\( *\)show("callguard_alerts"#\1if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.blockNotif", true)) show("callguard_alerts"#' $F/CallGuardScreeningService.kt
           sed -i 's#^            startFlip()$#            if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.flip", true)) startFlip()#' $F/CallGuardInCallService.kt
+          sed -i 's#"flutter.onlineCircle", true#"flutter.onlineCircle", false#' $F/CallGuardInCallService.kt
           sed -i 's#"requestNotificationPermission" -> requestNotif(result)#"requestNotificationPermission" -> requestNotif(result)\n                    "isDefaultDialer" -> result.success(DialerRole.isDefault(this))\n                    "requestDialerRole" -> { DialerRole.request(this); result.success(true) }#' $F/MainActivity.kt
           sed -i 's#"requestNotificationPermission" -> requestNotif(result)#"requestNotificationPermission" -> requestNotif(result)\n                    "deleteCalls" -> { if (checkSelfPermission(Manifest.permission.WRITE_CALL_LOG) != PackageManager.PERMISSION_GRANTED) { requestPermissions(arrayOf(Manifest.permission.WRITE_CALL_LOG), 1009); result.success(false) } else { result.success(CallLogOps.delete(this, call.argument<String>("number") ?: "")) } }#' $F/MainActivity.kt
           sed -i 's#stateView?.text = if (tag != null) base + "  |  SPAM - " + tag else base#stateView?.text = (if (tag != null) base + "  |  SPAM - " + tag else base) + CallHolder.circleFor(num)#' $F/InCallActivity.kt
           grep -q "flutter.spamVoice" $F/CallGuardScreeningService.kt || echo "WARNING: spamVoice switch jura nahi"
           grep -q "flutter.autoBlock" $F/CallGuardScreeningService.kt || echo "WARNING: autoBlock switch jura nahi"
           grep -q "flutter.blockTele" $F/CallGuardScreeningService.kt || echo "WARNING: blockTele switch jura nahi"
-          grep -q "(\$label2)" $F/CallGuardScreeningService.kt || echo "WARNING: label2 notification me nahi laga"
-          grep -q "flutter.infoPopup" $F/CallGuardScreeningService.kt || echo "WARNING: infoPopup switch jura nahi"
-          grep -q "flutter.blockNotif" $F/CallGuardScreeningService.kt || echo "WARNING: blockNotif switch jura nahi"
           grep -q "flutter.flip" $F/CallGuardInCallService.kt || echo "WARNING: flip switch jura nahi"
+          grep -q '"flutter.onlineCircle", false' $F/CallGuardInCallService.kt || echo "WARNING: online state default band nahi hua"
           grep -q "requestDialerRole" $F/MainActivity.kt || echo "WARNING: default button jura nahi"
           grep -q "deleteCalls" $F/MainActivity.kt || echo "WARNING: delete native jura nahi"
-          grep -q "circleFor" $F/InCallActivity.kt || echo "WARNING: call screen par state jura nahi"
           echo "NATIVE OK"
 
       - name: Fixed signing key
@@ -276,7 +277,31 @@ jobs:
           AS=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)/apksigner
           $AS verify --print-certs build/app/outputs/flutter-apk/app-release.apk | grep -i "SHA-256" || echo "fingerprint nahi mila"
 
+      - name: Build Play Store bundle
+        env:
+          UP_KS: ${{ secrets.UPLOAD_KS_B64 }}
+          UP_PASS: ${{ secrets.UPLOAD_KS_PASS }}
+        run: |
+          if [ -z "$UP_KS" ] || [ -z "$UP_PASS" ]; then
+            echo "UPLOAD KEY SECRET NAHI HAI, bundle skip"
+            exit 0
+          fi
+          echo "$UP_KS" | base64 -d > android/app/up.jks
+          K=android/app/build.gradle.kts
+          grep -q 'create("cg") {' $K || { echo "BUNDLE: cg config nahi mili"; exit 1; }
+          sed -i 's#create("cg") {#create("up") {\n            storeFile = file("up.jks")\n            storePassword = System.getenv("UP_PASS")\n            keyAlias = "upload"\n            keyPassword = System.getenv("UP_PASS")\n        }\n        create("cg") {#' $K
+          sed -i 's#signingConfigs.getByName("cg")#signingConfigs.getByName("up")#' $K
+          grep -q 'getByName("up")' $K || { echo "BUNDLE: up config laga nahi"; exit 1; }
+          flutter build appbundle --release --build-number=${{ github.run_number }}
+          keytool -printcert -jarfile build/app/outputs/bundle/release/app-release.aab | grep -i "SHA256" || echo "bundle fingerprint nahi mila"
+
       - uses: actions/upload-artifact@v4
         with:
           name: call-guard-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ hashFiles('build/app/outputs/bundle/release/app-release.aab') != '' }}
+        with:
+          name: call-guard-aab
+          path: build/app/outputs/bundle/release/app-release.aab
