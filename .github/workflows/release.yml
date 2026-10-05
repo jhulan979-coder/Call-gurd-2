@@ -1,0 +1,30 @@
+name: Publish APK
+
+on:
+  workflow_run:
+    workflows: ["Build Call Guard", "Build APK"]
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: call-guard-apk
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Call Guard (latest)
+          body: Latest build. Download app-release.apk and install it.
+          files: app-release.apk
+          prerelease: false
+          make_latest: true
