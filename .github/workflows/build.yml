@@ -37,6 +37,14 @@ jobs:
             sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'invite.dart';#" lib/main.dart
             CARDS="$CARDS\n            const InviteCard(),\n            const SizedBox(height: 8),"
           fi
+          if [ -f lib/p2pcall.dart ]; then
+            sed -i "s#import 'core.dart';#import 'core.dart';\nimport 'p2pcall.dart';#" lib/main.dart
+            CARDS="$CARDS\n            const P2PCard(),\n            const SizedBox(height: 8),"
+            grep -q "flutter_webrtc:" pubspec.yaml || sed -i 's#^\(  flutter_tts:.*\)$#\1\n  flutter_webrtc: ^1.3.0#' pubspec.yaml
+            grep -q "flutter_webrtc:" pubspec.yaml || { echo "WEBRTC PACKAGE NAHI JURA"; exit 1; }
+          else
+            echo "P2P FILE NAHI HAI, skip"
+          fi
           sed -i "s#const SizedBox(height: 8),#const SizedBox(height: 8),$CARDS#" lib/main.dart
           W="child ?? const SizedBox.shrink()"
           if [ -f lib/applock.dart ]; then
@@ -209,6 +217,12 @@ jobs:
           cp -r tmp_app/android android
           M=android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.CALL_PHONE"/>\n    <uses-permission android:name="android.permission.READ_CALL_LOG"/>\n    <uses-permission android:name="android.permission.WRITE_CALL_LOG"/>\n    <uses-permission android:name="android.permission.READ_CONTACTS"/>\n    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>\n    <application#' $M
+          if [ -f lib/p2pcall.dart ]; then
+            sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>\n    <uses-feature android:name="android.hardware.camera" android:required="false"/>\n    <uses-feature android:name="android.hardware.microphone" android:required="false"/>\n    <application#' $M
+            printf -- '-keep class org.webrtc.** { *; }\n-dontwarn org.webrtc.**\n' > android/app/proguard-rules.pro
+            sed -i 's#signingConfig = signingConfigs.getByName("debug")#signingConfig = signingConfigs.getByName("debug")\n            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")#' android/app/build.gradle.kts
+            grep -q "android.permission.CAMERA" $M || { echo "MANIFEST CAMERA FAIL"; exit 1; }
+          fi
           if grep -q "<queries>" $M; then
             sed -i 's#<queries>#<queries>\n    <intent><action android:name="android.speech.RecognitionService"/></intent>\n    <intent><action android:name="android.intent.action.TTS_SERVICE"/></intent>#' $M
           else
