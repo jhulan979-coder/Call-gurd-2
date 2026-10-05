@@ -220,7 +220,7 @@ jobs:
           if [ -f lib/p2pcall.dart ]; then
             sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>\n    <uses-feature android:name="android.hardware.camera" android:required="false"/>\n    <uses-feature android:name="android.hardware.microphone" android:required="false"/>\n    <application#' $M
             printf -- '-keep class org.webrtc.** { *; }\n-dontwarn org.webrtc.**\n' > android/app/proguard-rules.pro
-            sed -i 's#signingConfig = signingConfigs.getByName("debug")#signingConfig = signingConfigs.getByName("debug")\n            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")#' android/app/build.gradle.kts
+            sed -i 's#signingConfig = signingConfigs.getByName("debug")#signingConfig = signingConfigs.getByName("debug")\n            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")#' android/app/build.gradle.kts
             grep -q "android.permission.CAMERA" $M || { echo "MANIFEST CAMERA FAIL"; exit 1; }
           fi
           if grep -q "<queries>" $M; then
