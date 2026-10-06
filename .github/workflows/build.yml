@@ -83,6 +83,110 @@ jobs:
           sed -i "s#leading: const CircleAvatar(child: Icon(Icons.block)),#leading: const CircleAvatar(child: Icon(Icons.block)),\n                              trailing: TextButton(onPressed: () => store.unblock(e.number), child: const Text('Unblock')),#" lib/tabs.dart
           sed -i "s#direction: DismissDirection.endToStart,#direction: DismissDirection.horizontal,#" lib/tabs.dart
           grep -q "store.unblock(e.number), child" lib/tabs.dart || echo "WARNING: unblock button nahi juda"
+          python3 - << 'PY'
+          import re
+          p = 'lib/tabs.dart'
+          s = open(p, encoding='utf-8').read()
+          new_btn = """if (_isBlocked)
+                      FilledButton.tonalIcon(
+                        onPressed: () {
+                          store.unblock(_number);
+                          setState(() {
+                            _verdict = 'Block list se hata diya';
+                            _color = Colors.green;
+                            _icon = Icons.verified_user;
+                          });
+                        },
+                        icon: const Icon(Icons.lock_open),
+                        label: const Text('Unblock karo'),
+                      ),
+                    const SizedBox(height: 8),
+                    """
+          m = re.search(r"OutlinedButton\.icon\(\s*onPressed: _aiLoading \? null : _askAi,", s)
+          if m:
+              s = s[:m.start()] + new_btn + s[m.start():]
+              print('UNBLOCK CHECK PATCH OK')
+          else:
+              print('WARNING: UNBLOCK CHECK PATCH MISS')
+          open(p, 'w', encoding='utf-8').write(s)
+          p2 = 'lib/calls_tab.dart'
+          t = open(p2, encoding='utf-8').read()
+          vid = """label: const Text('Call karo'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    bool ok = false;
+                    try {
+                      ok = await _native.invokeMethod<bool>(
+                              'videoCall', {'number': n}) ??
+                          false;
+                    } catch (_) {}
+                    if (!ok) {
+                      launchUrl(Uri.parse('https://wa.me/91' + n),
+                          mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  icon: const Icon(Icons.videocam_outlined),
+                  label: const Text('Video call (WhatsApp)'),
+                ),
+                const SizedBox(height: 8),"""
+          m2 = re.search(r"label: const Text\('Call karo'\),\s*\),\s*const SizedBox\(height: 8\),", t)
+          if m2:
+              t = t[:m2.start()] + vid + t[m2.end():]
+              print('VIDEO BUTTON PATCH OK')
+          else:
+              print('WARNING: VIDEO BUTTON PATCH MISS')
+          open(p2, 'w', encoding='utf-8').write(t)
+          PY
+          cat > native/VideoCall.kt << 'KOTLIN'
+          package com.example.call_guard
+
+          import android.content.Context
+          import android.content.Intent
+          import android.net.Uri
+          import android.provider.ContactsContract
+
+          object VideoCall {
+              private fun tryApp(ctx: Context, mime: String, pkg: String, last10: String): Boolean {
+                  try {
+                      val cur = ctx.contentResolver.query(
+                          ContactsContract.Data.CONTENT_URI,
+                          arrayOf(ContactsContract.Data._ID, ContactsContract.Data.DATA1),
+                          ContactsContract.Data.MIMETYPE + "=?",
+                          arrayOf(mime),
+                          null
+                      )
+                      cur?.use {
+                          while (it.moveToNext()) {
+                              val d1 = it.getString(1) ?: ""
+                              val dd = d1.filter { c -> c.isDigit() }
+                              if (dd.endsWith(last10)) {
+                                  val id = it.getLong(0)
+                                  val i = Intent(Intent.ACTION_VIEW)
+                                  i.setDataAndType(Uri.parse("content://com.android.contacts/data/" + id), mime)
+                                  i.setPackage(pkg)
+                                  i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                  ctx.startActivity(i)
+                                  return true
+                              }
+                          }
+                      }
+                  } catch (e: Throwable) {
+                  }
+                  return false
+              }
+
+              fun whatsapp(ctx: Context, number: String): Boolean {
+                  val digits = number.filter { it.isDigit() }
+                  if (digits.length < 10) return false
+                  val last10 = digits.takeLast(10)
+                  if (tryApp(ctx, "vnd.android.cursor.item/vnd.com.whatsapp.video.call", "com.whatsapp", last10)) return true
+                  if (tryApp(ctx, "vnd.android.cursor.item/vnd.com.whatsapp.w4b.video.call", "com.whatsapp.w4b", last10)) return true
+                  return false
+              }
+          }
+          KOTLIN
           cat > native/CallLogOps.kt << 'KOTLIN'
           package com.example.call_guard
 
@@ -234,6 +338,7 @@ jobs:
           else
             sed -i 's#<application#<queries><intent><action android:name="android.speech.RecognitionService"/></intent><intent><action android:name="android.intent.action.TTS_SERVICE"/></intent></queries>\n    <application#' $M
           fi
+          sed -i 's#<queries>#<queries>\n    <package android:name="com.whatsapp"/>\n    <package android:name="com.whatsapp.w4b"/>#' $M
           sed -i 's#</activity>#    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.DIAL"/><category android:name="android.intent.category.DEFAULT"/><data android:scheme="tel"/></intent-filter>\n    <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="tel"/></intent-filter>\n    </activity>#' $M
           sed -i 's#</application>#    <service android:name="com.example.call_guard.CallGuardScreeningService" android:permission="android.permission.BIND_SCREENING_SERVICE" android:exported="true"><intent-filter><action android:name="android.telecom.CallScreeningService"/></intent-filter></service>\n    <service android:name="com.example.call_guard.CallGuardInCallService" android:permission="android.permission.BIND_INCALL_SERVICE" android:exported="true"><meta-data android:name="android.telecom.IN_CALL_SERVICE_UI" android:value="true"/><intent-filter><action android:name="android.telecom.InCallService"/></intent-filter></service>\n    <activity android:name="com.example.call_guard.InCallActivity" android:exported="false" android:launchMode="singleInstance" android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.NoActionBar"/>\n    </application>#' $M
           sed -i 's/android:label="[^"]*"/android:label="Call Guard"/' $M
@@ -306,6 +411,7 @@ jobs:
           sed -i 's#^\( *\)show("callguard_alerts"#\1if (getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.blockNotif", true)) show("callguard_alerts"#' $F/CallGuardScreeningService.kt
           sed -i 's#"requestNotificationPermission" -> requestNotif(result)#"requestNotificationPermission" -> requestNotif(result)\n                    "isDefaultDialer" -> result.success(DialerRole.isDefault(this))\n                    "requestDialerRole" -> { DialerRole.request(this); result.success(true) }#' $F/MainActivity.kt
           sed -i 's#"requestNotificationPermission" -> requestNotif(result)#"requestNotificationPermission" -> requestNotif(result)\n                    "deleteCalls" -> { if (checkSelfPermission(Manifest.permission.WRITE_CALL_LOG) != PackageManager.PERMISSION_GRANTED) { requestPermissions(arrayOf(Manifest.permission.WRITE_CALL_LOG), 1009); result.success(false) } else { result.success(CallLogOps.delete(this, call.argument<String>("number") ?: "")) } }#' $F/MainActivity.kt
+          sed -i 's#"requestNotificationPermission" -> requestNotif(result)#"requestNotificationPermission" -> requestNotif(result)\n                    "videoCall" -> result.success(VideoCall.whatsapp(this, call.argument<String>("number") ?: ""))#' $F/MainActivity.kt
           sed -i 's#stateView?.text = if (tag != null) base + "  |  SPAM - " + tag else base#stateView?.text = (if (tag != null) base + "  |  SPAM - " + tag else base) + CallHolder.circleFor(num)#' $F/InCallActivity.kt
           grep -q "flutter.spamVoice" $F/CallGuardScreeningService.kt || echo "WARNING: spamVoice switch jura nahi"
           grep -q "flutter.autoBlock" $F/CallGuardScreeningService.kt || echo "WARNING: autoBlock switch jura nahi"
@@ -314,6 +420,7 @@ jobs:
           grep -q "flutter.spamAnswer" $F/CallGuardInCallService.kt || echo "WARNING: spamAnswer incall me nahi juda"
           grep -q "requestDialerRole" $F/MainActivity.kt || echo "WARNING: default button jura nahi"
           grep -q "deleteCalls" $F/MainActivity.kt || echo "WARNING: delete native jura nahi"
+          grep -q "videoCall" $F/MainActivity.kt || echo "WARNING: video call native jura nahi"
           if [ -f patch_native.sh ]; then
             bash patch_native.sh && echo "PATCH_NATIVE OK" || { echo "PATCH_NATIVE FAIL"; exit 1; }
           fi
