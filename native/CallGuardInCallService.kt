@@ -19,6 +19,7 @@ import android.os.Looper
 import android.provider.ContactsContract
 import android.speech.tts.TextToSpeech
 import android.telecom.Call
+import android.telecom.DisconnectCause
 import android.telecom.InCallService
 import android.telecom.TelecomManager
 import android.telecom.VideoProfile
@@ -26,6 +27,8 @@ import android.widget.Toast
 import com.google.i18n.phonenumbers.PhoneNumberUtil
 import com.google.i18n.phonenumbers.geocoding.PhoneNumberOfflineGeocoder
 import org.json.JSONArray
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 const val CG_NOTIF_ID = 7001
@@ -84,6 +87,10 @@ class CallGuardInCallService : InCallService() {
     private var sm: SensorManager? = null
     private var ttsRef: TextToSpeech? = null
     private val autoCalls = HashSet<Call>()
+    private val incomingCalls = HashSet<Call>()
+    private val answeredCalls = HashSet<Call>()
+    private val infoMap = HashMap<Call, String>()
+    private var missedCounter = 0
     private val h = Handler(Looper.getMainLooper())
 
     private fun prefs(): SharedPreferences {
@@ -122,28 +129,36 @@ class CallGuardInCallService : InCallService() {
 
     private val cb = object : Call.Callback() {
         override fun onStateChanged(call: Call, state: Int) {
+            val s = this@CallGuardInCallService
             if (state != Call.STATE_RINGING) {
-                this@CallGuardInCallService.cancelNotif()
-                this@CallGuardInCallService.stopFlip()
+                s.stopFlip()
             }
             if (state == Call.STATE_ACTIVE) {
-                if (this@CallGuardInCallService.autoCalls.contains(call)) {
+                s.answeredCalls.add(call)
+                if (s.autoCalls.contains(call)) {
                     try {
-                        this@CallGuardInCallService.setMuted(true)
+                        s.setMuted(true)
                     } catch (x: Throwable) {
                     }
-                    this@CallGuardInCallService.h.postDelayed({
+                    s.h.postDelayed({
                         try {
                             call.disconnect()
                         } catch (x: Throwable) {
                         }
                     }, 30000)
                 } else {
-                    this@CallGuardInCallService.stopSpeech()
+                    s.stopSpeech()
                     try {
-                        this@CallGuardInCallService.setMuted(false)
+                        s.setMuted(false)
                     } catch (x: Throwable) {
                     }
+                }
+            }
+            if (state == Call.STATE_ACTIVE || state == Call.STATE_DIALING ||
+                state == Call.STATE_CONNECTING || state == Call.STATE_HOLDING
+            ) {
+                if (!s.autoCalls.contains(call)) {
+                    s.postOngoing(call, state)
                 }
             }
         }
@@ -154,7 +169,14 @@ class CallGuardInCallService : InCallService() {
         CallHolder.call = call
         CallHolder.service = this
         call.registerCallback(cb)
+        try {
+            val raw = call.details.handle?.schemeSpecificPart ?: ""
+            val lab = CallHolder.label(this, call)
+            infoMap[call] = if (raw.isEmpty() || lab == raw) lab else lab + "  |  " + raw
+        } catch (e: Throwable) {
+        }
         if (call.state == Call.STATE_RINGING) {
+            incomingCalls.add(call)
             if (shouldAutoAnswer(call)) {
                 startAutoAnswer(call)
             } else {
@@ -164,6 +186,7 @@ class CallGuardInCallService : InCallService() {
             }
         } else {
             openUi()
+            postOngoing(call, call.state)
         }
     }
 
@@ -173,13 +196,26 @@ class CallGuardInCallService : InCallService() {
             call.unregisterCallback(cb)
         } catch (e: Exception) {
         }
-        autoCalls.remove(call)
+        val wasIncoming = incomingCalls.remove(call)
+        val answered = answeredCalls.remove(call)
+        val auto = autoCalls.remove(call)
+        val info = infoMap.remove(call) ?: "Unknown"
+        var cause = -1
+        try {
+            cause = call.details.disconnectCause?.code ?: -1
+        } catch (e: Throwable) {
+        }
         if (CallHolder.call == call) {
             CallHolder.call = null
         }
         cancelNotif()
         stopFlip()
         stopSpeech()
+        if (wasIncoming && !answered && !auto &&
+            cause != DisconnectCause.REJECTED && cause != DisconnectCause.LOCAL
+        ) {
+            postMissed(info)
+        }
     }
 
     override fun onDestroy() {
@@ -375,15 +411,87 @@ class CallGuardInCallService : InCallService() {
             val circ = CallHolder.circle(raw)
             b.setSmallIcon(android.R.drawable.ic_menu_call)
             b.setContentTitle("Incoming call")
-            b.setContentText(CallHolder.label(this, call) + (if (circ != null) "  |  " + circ else ""))
+            b.setContentText((infoMap[call] ?: CallHolder.label(this, call)) + (if (circ != null) "  |  " + circ else ""))
             b.setContentIntent(pi)
             b.setFullScreenIntent(pi, true)
             b.setOngoing(true)
             b.setCategory(Notification.CATEGORY_CALL)
+            b.setVisibility(Notification.VISIBILITY_PUBLIC)
             nm.notify(CG_NOTIF_ID, b.build())
         } catch (e: Exception) {
         }
         openUi()
+    }
+
+    private fun postOngoing(call: Call, state: Int) {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(
+                    NotificationChannel("cg_active", "Ongoing call", NotificationManager.IMPORTANCE_LOW)
+                )
+            }
+            val i = Intent(this, InCallActivity::class.java)
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val pi = PendingIntent.getActivity(this, 1, i, flags)
+            val b = if (Build.VERSION.SDK_INT >= 26) {
+                Notification.Builder(this, "cg_active")
+            } else {
+                Notification.Builder(this)
+            }
+            val st = when (state) {
+                Call.STATE_ACTIVE -> "Call chal rahi hai"
+                Call.STATE_HOLDING -> "On hold"
+                else -> "Calling..."
+            }
+            b.setSmallIcon(android.R.drawable.ic_menu_call)
+            b.setContentTitle(st)
+            b.setContentText(infoMap[call] ?: CallHolder.label(this, call))
+            b.setContentIntent(pi)
+            b.setOngoing(true)
+            b.setOnlyAlertOnce(true)
+            b.setCategory(Notification.CATEGORY_CALL)
+            b.setVisibility(Notification.VISIBILITY_PUBLIC)
+            val t = call.details.connectTimeMillis
+            if (state == Call.STATE_ACTIVE && t > 0) {
+                b.setWhen(t)
+                b.setUsesChronometer(true)
+            }
+            nm.notify(CG_NOTIF_ID, b.build())
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun postMissed(info: String) {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(
+                    NotificationChannel("cg_missed", "Missed calls", NotificationManager.IMPORTANCE_HIGH)
+                )
+            }
+            val launch = packageManager.getLaunchIntentForPackage(packageName)
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val b = if (Build.VERSION.SDK_INT >= 26) {
+                Notification.Builder(this, "cg_missed")
+            } else {
+                Notification.Builder(this)
+            }
+            val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+            b.setSmallIcon(android.R.drawable.sym_call_missed)
+            b.setContentTitle("Missed call")
+            b.setContentText(info + "  |  " + time)
+            b.setStyle(Notification.BigTextStyle().bigText(info + "\n" + time))
+            if (launch != null) {
+                b.setContentIntent(PendingIntent.getActivity(this, 2, launch, flags))
+            }
+            b.setAutoCancel(true)
+            b.setVisibility(Notification.VISIBILITY_PUBLIC)
+            missedCounter++
+            nm.notify(7100 + (missedCounter % 40), b.build())
+        } catch (e: Exception) {
+        }
     }
 
     private fun cancelNotif() {
