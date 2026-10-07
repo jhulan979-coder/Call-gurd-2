@@ -95,3 +95,45 @@ else:
     open(p, 'w', encoding='utf-8').write(s)
     print('BRAIN PATCH OK: ' + str(n))
 PY
+python3 - << 'PY'
+import os
+base = 'android/app/src/main/'
+n = 0
+p = base + 'kotlin/com/example/call_guard/MainActivity.kt'
+if os.path.exists(p):
+    s = open(p, encoding='utf-8').read()
+    if 'FlutterFragmentActivity' not in s:
+        s = s.replace('import io.flutter.embedding.android.FlutterActivity', 'import io.flutter.embedding.android.FlutterFragmentActivity')
+        s = s.replace(': FlutterActivity()', ': FlutterFragmentActivity()')
+        open(p, 'w', encoding='utf-8').write(s)
+    if 'FlutterFragmentActivity()' in s:
+        n += 1
+    else:
+        print('BIO MISS: MainActivity')
+else:
+    print('BIO MISS: MainActivity file nahi mili')
+m = base + 'AndroidManifest.xml'
+t = open(m, encoding='utf-8').read()
+if 'USE_BIOMETRIC' not in t:
+    t = t.replace('<application', '<uses-permission android:name="android.permission.USE_BIOMETRIC"/>\n    <application', 1)
+    open(m, 'w', encoding='utf-8').write(t)
+if 'USE_BIOMETRIC' in t:
+    n += 1
+for f in ('res/values/styles.xml', 'res/values-night/styles.xml'):
+    q = base + f
+    if os.path.exists(q):
+        x = open(q, encoding='utf-8').read()
+        y = x.replace('parent="@android:style/Theme.Light.NoTitleBar"', 'parent="Theme.AppCompat.Light.NoActionBar"')
+        y = y.replace('parent="@android:style/Theme.Black.NoTitleBar"', 'parent="Theme.AppCompat.NoActionBar"')
+        if y != x:
+            open(q, 'w', encoding='utf-8').write(y)
+            n += 1
+for g in ('android/app/build.gradle.kts', 'android/app/build.gradle'):
+    if os.path.exists(g):
+        c = open(g, encoding='utf-8').read()
+        if 'androidx.appcompat:appcompat' not in c:
+            c += '\ndependencies {\n    implementation("androidx.appcompat:appcompat:1.7.0")\n}\n'
+            open(g, 'w', encoding='utf-8').write(c)
+        n += 1
+print('BIOMETRIC SETUP DONE: ' + str(n))
+PY
