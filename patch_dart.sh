@@ -109,3 +109,19 @@ if os.path.exists(p):
     open(p, 'w', encoding='utf-8').write(s)
     print('SENSITIVITY PATCH OK: ' + str(k))
 PY
+python3 - << 'PY'
+import os
+import re
+if os.path.exists('lib/applock.dart'):
+    p = 'pubspec.yaml'
+    s = open(p, encoding='utf-8').read()
+    if 'local_auth:' in s:
+        print('LOCAL_AUTH ALREADY')
+    else:
+        t = re.sub(r'(\n  flutter_tts:[^\n]*)', r'\1\n  local_auth: ^2.3.0', s, count=1)
+        if t != s:
+            open(p, 'w', encoding='utf-8').write(t)
+            print('LOCAL_AUTH ADDED')
+        else:
+            print('LOCAL_AUTH MISS: flutter_tts line nahi mili')
+PY
