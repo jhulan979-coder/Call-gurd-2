@@ -2,10 +2,14 @@ import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _kHash = 'applock_hash';
 const _kSalt = 'applock_salt';
+const _kBio = 'applock_bio';
+
+final LocalAuthentication _auth = LocalAuthentication();
 
 String _hash(String salt, String pin) {
   List<int> h = utf8.encode(salt + ':' + pin);
@@ -40,8 +44,44 @@ Future<void> pinClear() async {
   final p = await SharedPreferences.getInstance();
   await p.remove(_kHash);
   await p.remove(_kSalt);
+  await p.remove(_kBio);
   await p.remove('applock_fails');
   await p.remove('applock_until');
+}
+
+Future<bool> bioEnabled() async {
+  final p = await SharedPreferences.getInstance();
+  return p.getBool(_kBio) ?? false;
+}
+
+Future<void> setBio(bool v) async {
+  final p = await SharedPreferences.getInstance();
+  await p.setBool(_kBio, v);
+}
+
+Future<bool> bioAvailable() async {
+  try {
+    final can = await _auth.canCheckBiometrics;
+    if (!can) return false;
+    final list = await _auth.getAvailableBiometrics();
+    return list.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> bioAsk(String reason, {bool deviceCredential = false}) async {
+  try {
+    return await _auth.authenticate(
+      localizedReason: reason,
+      options: AuthenticationOptions(
+        biometricOnly: !deviceCredential,
+        stickyAuth: true,
+      ),
+    );
+  } catch (_) {
+    return false;
+  }
 }
 
 class AppLockGate extends StatefulWidget {
@@ -127,11 +167,40 @@ class _PinScreenState extends State<PinScreen> {
   String _err = '';
   int _fails = 0;
   int _until = 0;
+  bool _bioOn = false;
 
   @override
   void initState() {
     super.initState();
     _loadFails();
+    _initBio();
+  }
+
+  Future<void> _initBio() async {
+    final on = await bioEnabled();
+    if (!mounted) return;
+    setState(() => _bioOn = on);
+    if (on) {
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (mounted) _tryBio();
+    }
+  }
+
+  Future<void> _tryBio() async {
+    final ok = await bioAsk('Call Guard kholne ke liye fingerprint do');
+    if (ok && mounted) widget.onUnlock();
+  }
+
+  Future<void> _forgot() async {
+    final ok = await bioAsk(
+        'Apne phone ka PIN, pattern ya fingerprint do',
+        deviceCredential: true);
+    if (ok) {
+      await pinClear();
+      if (mounted) widget.onUnlock();
+    } else if (mounted) {
+      setState(() => _err = 'Pehchan nahi hui');
+    }
   }
 
   Future<void> _loadFails() async {
@@ -206,6 +275,15 @@ class _PinScreenState extends State<PinScreen> {
     return Row(children: ds.map(_key).toList());
   }
 
+  Widget _cell(Widget child) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: SizedBox(height: 64, child: child),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -250,21 +328,23 @@ class _PinScreenState extends State<PinScreen> {
               _row(['7', '8', '9']),
               Row(
                 children: [
-                  const Expanded(child: SizedBox()),
+                  _bioOn
+                      ? _cell(TextButton(
+                          onPressed: _tryBio,
+                          child: const Icon(Icons.fingerprint, size: 34),
+                        ))
+                      : const Expanded(child: SizedBox()),
                   _key('0'),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: SizedBox(
-                        height: 64,
-                        child: TextButton(
-                          onPressed: _del,
-                          child: const Icon(Icons.backspace_outlined),
-                        ),
-                      ),
-                    ),
-                  ),
+                  _cell(TextButton(
+                    onPressed: _del,
+                    child: const Icon(Icons.backspace_outlined),
+                  )),
                 ],
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _forgot,
+                child: const Text('PIN bhool gaye?'),
               ),
             ],
           ),
@@ -274,92 +354,314 @@ class _PinScreenState extends State<PinScreen> {
   }
 }
 
-Future<void> showPinSetup(BuildContext context) async {
-  final isSet = await pinIsSet();
-  if (!context.mounted) return;
-  final c0 = TextEditingController();
+Future<String?> _askPin(BuildContext context, String title) async {
+  final c = TextEditingController();
+  String err = '';
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setD) => AlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: c,
+              obscureText: true,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              decoration:
+                  const InputDecoration(labelText: 'PIN', counterText: ''),
+            ),
+            if (err.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(err, style: const TextStyle(color: Colors.red)),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final ok = await pinCheck(c.text);
+              if (!ctx.mounted) return;
+              if (ok) {
+                Navigator.pop(ctx, c.text);
+              } else {
+                setD(() => err = 'Galat PIN');
+              }
+            },
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Future<bool> _newPinDialog(BuildContext context) async {
   final c1 = TextEditingController();
   final c2 = TextEditingController();
   String err = '';
-  await showDialog<void>(
+  final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setD) {
-        InputDecoration dec(String t) =>
-            InputDecoration(labelText: t, counterText: '');
-        return AlertDialog(
-          title: Text(isSet ? 'PIN badlo ya hatao' : 'App lock PIN lagao'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isSet)
-                TextField(
-                  controller: c0,
-                  obscureText: true,
-                  keyboardType: TextInputType.number,
-                  maxLength: 4,
-                  decoration: dec('Abhi ka PIN'),
-                ),
-              TextField(
-                controller: c1,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                decoration: dec('Naya 4 digit PIN'),
-              ),
-              TextField(
-                controller: c2,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 4,
-                decoration: dec('Naya PIN dobara'),
-              ),
-              if (err.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(err, style: const TextStyle(color: Colors.red)),
-                ),
-            ],
-          ),
-          actions: [
-            if (isSet)
-              TextButton(
-                onPressed: () async {
-                  if (!await pinCheck(c0.text)) {
-                    setD(() => err = 'Abhi ka PIN galat hai');
-                    return;
-                  }
-                  await pinClear();
-                  if (ctx.mounted) Navigator.pop(ctx);
-                },
-                child: const Text('PIN hatao'),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+      builder: (ctx, setD) => AlertDialog(
+        title: const Text('Naya 4 digit PIN'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: c1,
+              obscureText: true,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              decoration:
+                  const InputDecoration(labelText: 'PIN', counterText: ''),
             ),
-            FilledButton(
-              onPressed: () async {
-                if (isSet && !await pinCheck(c0.text)) {
-                  setD(() => err = 'Abhi ka PIN galat hai');
-                  return;
-                }
-                if (!RegExp(r'^\d{4}$').hasMatch(c1.text)) {
-                  setD(() => err = 'PIN 4 digit ka hona chahiye');
-                  return;
-                }
-                if (c1.text != c2.text) {
-                  setD(() => err = 'Dono PIN alag hain');
-                  return;
-                }
-                await pinSave(c1.text);
-                if (ctx.mounted) Navigator.pop(ctx);
-              },
-              child: const Text('Save'),
+            TextField(
+              controller: c2,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              decoration: const InputDecoration(
+                  labelText: 'PIN dobara', counterText: ''),
             ),
+            if (err.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(err, style: const TextStyle(color: Colors.red)),
+              ),
           ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (!RegExp(r'^\d{4}$').hasMatch(c1.text)) {
+                setD(() => err = 'PIN 4 digit ka hona chahiye');
+                return;
+              }
+              if (c1.text != c2.text) {
+                setD(() => err = 'Dono PIN alag hain');
+                return;
+              }
+              await pinSave(c1.text);
+              if (ctx.mounted) Navigator.pop(ctx, true);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
     ),
+  );
+  return ok == true;
+}
+
+class AppLockSettingsPage extends StatefulWidget {
+  const AppLockSettingsPage({super.key});
+
+  @override
+  State<AppLockSettingsPage> createState() => _AppLockSettingsPageState();
+}
+
+class _AppLockSettingsPageState extends State<AppLockSettingsPage> {
+  bool _loading = true;
+  bool _set = false;
+  bool _bio = false;
+  bool _avail = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final s = await pinIsSet();
+    final b = await bioEnabled();
+    final a = await bioAvailable();
+    if (!mounted) return;
+    setState(() {
+      _set = s;
+      _bio = b && s;
+      _avail = a;
+      _loading = false;
+    });
+  }
+
+  void _toast(String t) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
+  Future<void> _turnOn() async {
+    final ok = await _newPinDialog(context);
+    await _load();
+    if (ok && mounted) _toast('App lock chalu ho gaya');
+  }
+
+  Future<void> _change() async {
+    final p = await _askPin(context, 'Abhi ka PIN');
+    if (p == null || !mounted) return;
+    final ok = await _newPinDialog(context);
+    if (ok && mounted) _toast('PIN badal gaya');
+  }
+
+  Future<void> _toggleBio(bool v) async {
+    if (v) {
+      final ok = await bioAsk('Fingerprint chalu karne ke liye pehchano');
+      if (ok) {
+        await setBio(true);
+      } else if (mounted) {
+        _toast('Fingerprint pehchani nahi gayi');
+      }
+    } else {
+      await setBio(false);
+    }
+    await _load();
+  }
+
+  Future<void> _remove() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('App lock hatana hai?'),
+        content: const Text(
+            'Iske baad Call Guard bina PIN ke khulegi.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    bool verified = false;
+    if (_bio && _avail) {
+      verified = await bioAsk('Lock hatane ke liye fingerprint do');
+    }
+    if (!verified && mounted) {
+      final p = await _askPin(context, 'Lock hatane ke liye PIN daalo');
+      verified = p != null;
+    }
+    if (verified) {
+      await pinClear();
+      await _load();
+      if (mounted) _toast('App lock hata diya');
+    }
+  }
+
+  Future<void> _forgot() async {
+    final ok = await bioAsk(
+        'Apne phone ka PIN, pattern ya fingerprint do',
+        deviceCredential: true);
+    if (ok) {
+      await pinClear();
+      await _load();
+      if (mounted) _toast('App lock hata diya');
+    } else if (mounted) {
+      _toast('Pehchan nahi hui');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('App lock')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              children: [
+                Container(
+                  margin: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: (_set ? Colors.green : Colors.orange)
+                        .withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(_set ? Icons.lock : Icons.lock_open,
+                          color: _set ? Colors.green : Colors.orange),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _set ? 'App lock chalu hai' : 'App lock band hai',
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!_set) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: FilledButton.icon(
+                      onPressed: _turnOn,
+                      icon: const Icon(Icons.lock_outline),
+                      label: const Text('PIN lagao'),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                        '4 digit PIN lagane ke baad fingerprint se bhi khol sakte ho.'),
+                  ),
+                ],
+                if (_set) ...[
+                  SwitchListTile(
+                    title: const Text('Fingerprint se kholo'),
+                    subtitle: Text(_avail
+                        ? 'PIN ki jagah ungli se'
+                        : 'Is phone me fingerprint set nahi hai'),
+                    value: _bio,
+                    onChanged: _avail ? _toggleBio : null,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.password),
+                    title: const Text('PIN badlo'),
+                    onTap: _change,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.help_outline),
+                    title: const Text('PIN bhool gaye?'),
+                    subtitle: const Text(
+                        'Phone ke PIN ya fingerprint se lock hatao'),
+                    onTap: _forgot,
+                  ),
+                  const Divider(),
+                  ListTile(
+                    leading: const Icon(Icons.lock_open, color: Colors.red),
+                    title: const Text('App lock hatao',
+                        style: TextStyle(color: Colors.red)),
+                    onTap: _remove,
+                  ),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+Future<void> showPinSetup(BuildContext context) async {
+  await Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const AppLockSettingsPage()),
   );
 }
