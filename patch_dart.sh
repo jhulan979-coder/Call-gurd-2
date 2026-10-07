@@ -34,18 +34,78 @@ import re
 p = 'lib/settings_page.dart'
 if os.path.exists(p):
     s = open(p, encoding='utf-8').read()
-    if "'spamAnswerSus'" in s:
-        print('SETTINGS STRONG ALREADY')
-    else:
+    if "'spamAnswerSus'" not in s:
         s = s.replace("'spamAnswer': false,", "'spamAnswer': false,\n  'spamAnswerSus': false,\n  'spamAnswerAll': false,", 1)
-        rows = """          _sw('spamAnswerSus', 'Shak wali calls bhi uthao', 'Chhupe, videshi, ajeeb ya baar baar aane wale unknown number. Upar wala switch on ho tabhi', enabled: _v['spamAnswer'] ?? false),
+        rows = """          _sw('spamAnswerSus', 'Shak wali calls bhi uthao', 'Spam risk zyada wali calls (chhupa, videshi, baar baar aane wali). Upar wala switch on ho tabhi', enabled: _v['spamAnswer'] ?? false),
           _sw('spamAnswerAll', 'Har unknown number uthao (savdhan)', 'Contacts me na hone wale har number ko chup rehke uthayega. Zaroori call (delivery, doctor) bhi chhut sakti hai', enabled: _v['spamAnswer'] ?? false),
 """
         m = re.search(r"[ ]*_sw\('spamAnswer'[^\n]*\n", s)
         if m:
             s = s[:m.end()] + rows + s[m.end():]
-            open(p, 'w', encoding='utf-8').write(s)
             print('SETTINGS STRONG PATCH OK')
         else:
             print('SETTINGS STRONG MISS: spamAnswer row nahi mili')
+    else:
+        print('SETTINGS STRONG ALREADY')
+    k = 0
+    methods = """  String _spamLevel = 'med';
+
+  Future<void> _loadLevel() async {
+    final p = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _spamLevel = p.getString('spamLevel') ?? 'med');
+  }
+
+  Future<void> _pickLevel() async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Spam sensitivity'),
+        children: [
+          for (final e in const [
+            ['low', 'Kam (sirf pakka spam)'],
+            ['med', 'Beech ka'],
+            ['high', 'Zyada (shak par bhi)'],
+          ])
+            SimpleDialogOption(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                final p = await SharedPreferences.getInstance();
+                await p.setString('spamLevel', e[0]);
+                if (mounted) setState(() => _spamLevel = e[0]);
+              },
+              child: Text(e[1]),
+            ),
+        ],
+      ),
+    );
+  }
+
+"""
+    tile = """          ListTile(
+            leading: const Icon(Icons.tune),
+            title: const Text('Spam sensitivity'),
+            subtitle: Text(_spamLevel == 'low' ? 'Kam (sirf pakka spam)' : (_spamLevel == 'high' ? 'Zyada (shak par bhi)' : 'Beech ka')),
+            onTap: _pickLevel,
+          ),
+"""
+    a1 = '    _load();\n    _checkDefault();'
+    if a1 in s:
+        s = s.replace(a1, a1 + '\n    _loadLevel();', 1)
+        k += 1
+    else:
+        print('SENSITIVITY MISS: initState')
+    a2 = '  Future<void> _set(String k, bool x) async {'
+    if a2 in s:
+        s = s.replace(a2, methods + a2, 1)
+        k += 1
+    else:
+        print('SENSITIVITY MISS: methods')
+    a3 = "_head('Awaaz aur ring'),"
+    if a3 in s:
+        s = s.replace(a3, tile + '          ' + a3, 1)
+        k += 1
+    else:
+        print('SENSITIVITY MISS: row')
+    open(p, 'w', encoding='utf-8').write(s)
+    print('SENSITIVITY PATCH OK: ' + str(k))
 PY
