@@ -5,94 +5,93 @@ if not os.path.exists(p):
     print('INCALL FILE NAHI MILI')
 else:
     s = open(p, encoding='utf-8').read()
-    a = s.find('    private fun shouldAutoAnswer(call: Call): Boolean {')
-    b = s.find('    private fun startAutoAnswer(call: Call) {')
-    if a < 0 or b < 0 or b < a:
-        print('STRONG PATCH MISS: functions nahi mile')
-    else:
-        new = r'''    private var lastReason = ""
+    n = 0
 
-    private fun repeatCount(n: String): Int {
-        var c = 0
-        try {
-            if (checkSelfPermission(android.Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) return 0
-            val since = System.currentTimeMillis() - 24L * 3600L * 1000L
-            val cur = contentResolver.query(
-                android.provider.CallLog.Calls.CONTENT_URI,
-                arrayOf(android.provider.CallLog.Calls.TYPE),
-                android.provider.CallLog.Calls.NUMBER + " LIKE ? AND " + android.provider.CallLog.Calls.DATE + " > ?",
-                arrayOf("%" + n, since.toString()),
-                null
-            )
-            cur?.use {
-                while (it.moveToNext()) {
-                    val t = it.getInt(0)
-                    if (t == android.provider.CallLog.Calls.MISSED_TYPE ||
-                        t == android.provider.CallLog.Calls.REJECTED_TYPE ||
-                        t == android.provider.CallLog.Calls.BLOCKED_TYPE
-                    ) {
-                        c++
-                    }
-                }
+    def rep(a, b):
+        global s, n
+        if a in s:
+            s = s.replace(a, b, 1)
+            n += 1
+        else:
+            print('BRAIN PATCH MISS: ' + a[:50])
+
+    rep('    val circles = HashMap<String, String>()\n',
+        '    val circles = HashMap<String, String>()\n    val risks = HashMap<String, String>()\n')
+
+    a = s.find('    fun circleFor(num: String): String {')
+    b = s.find('    fun lookup(ctx: Context, raw: String): String? {')
+    if a >= 0 and b > a:
+        new_cf = r'''    fun circleFor(num: String): String {
+        var out = ""
+        val c = circles[num]
+        if (c != null) out += "  |  " + c
+        val r = risks[num]
+        if (r != null) out += "  |  " + r
+        return out
+    }
+
+'''
+        s = s[:a] + new_cf + s[b:]
+        n += 1
+    else:
+        print('BRAIN PATCH MISS: circleFor')
+
+    rep('        if (call.state == Call.STATE_RINGING) {\n            incomingCalls.add(call)',
+        r'''        try {
+            val raw3 = call.details.handle?.schemeSpecificPart ?: ""
+            val dg = raw3.filter { it.isDigit() }
+            val n3 = if (dg.length > 10) dg.substring(dg.length - 10) else dg
+            val br = SpamBrain.evaluate(this, raw3)
+            if (br.score >= 35) {
+                CallHolder.risks[n3] = br.badge
+                infoMap[call] = (infoMap[call] ?: "") + "  |  " + br.badge
             }
         } catch (e: Throwable) {
         }
-        return c
-    }
+        if (call.state == Call.STATE_RINGING) {
+            incomingCalls.add(call)''')
+
+    rep('        if (wasIncoming && !answered && !auto &&',
+        r'''        try {
+            val rawL = call.details.handle?.schemeSpecificPart ?: ""
+            SpamBrain.learn(this, rawL, wasIncoming, answered, auto, cause, call.details.connectTimeMillis)
+        } catch (e: Throwable) {
+        }
+        if (wasIncoming && !answered && !auto &&''')
+
+    a2 = s.find('    private fun shouldAutoAnswer(call: Call): Boolean {')
+    b2 = s.find('    private fun startAutoAnswer(call: Call) {')
+    if a2 >= 0 and b2 > a2:
+        new_sa = r'''    private var lastReason = ""
 
     private fun shouldAutoAnswer(call: Call): Boolean {
         try {
             val p = prefs()
             if (!p.getBoolean("flutter.spamAnswer", false)) return false
             val raw = call.details.handle?.schemeSpecificPart ?: ""
-            val digits = raw.filter { it.isDigit() }
-            val n = if (digits.length > 10) digits.substring(digits.length - 10) else digits
+            val n = SpamBrain.last10(raw)
             val dn = call.details.callerDisplayName
             if (!dn.isNullOrEmpty()) return false
             val saved = CallHolder.lookup(this, raw)
             if (!saved.isNullOrEmpty()) return false
-            if (n.length == 10 && isSpamNum(n)) {
-                lastReason = if (n.startsWith("140") || n.startsWith("160")) "telemarketing series" else "block list"
-                return true
-            }
-            if (p.getBoolean("flutter.spamAnswerSus", false)) {
-                if (raw.isEmpty()) {
-                    lastReason = "chhupa number"
-                    return true
-                }
-                if (raw.startsWith("+") && !raw.startsWith("+91")) {
-                    lastReason = "videshi number"
-                    return true
-                }
-                if (n.length != 10) {
-                    lastReason = "ajeeb lambai ka number"
-                    return true
-                }
-                if (Regex("(\\d)\\1{6,}").containsMatchIn(n)) {
-                    lastReason = "ek jaise digit"
-                    return true
-                }
-                if (repeatCount(n) >= 2) {
-                    lastReason = "baar baar aane wala number"
-                    return true
-                }
-            }
-            if (p.getBoolean("flutter.spamAnswerAll", false)) {
-                lastReason = "unknown number"
-                return true
-            }
+            val br = SpamBrain.evaluate(this, raw)
+            lastReason = br.badge + ": " + br.reasons.joinToString(", ")
+            if (n.length == 10 && isSpamNum(n)) return true
+            if (p.getBoolean("flutter.spamAnswerSus", false) && br.score >= SpamBrain.threshold(this)) return true
+            if (p.getBoolean("flutter.spamAnswerAll", false)) return true
         } catch (e: Throwable) {
         }
         return false
     }
 
 '''
-        s = s[:a] + new + s[b:]
-        old = 'info("Spam call apne aap uthayi", CallHolder.label(this, call))'
-        if old in s:
-            s = s.replace(old, 'info("Spam call apne aap uthayi", CallHolder.label(this, call) + "  |  " + lastReason)', 1)
-        else:
-            print('REASON TEXT MISS')
-        open(p, 'w', encoding='utf-8').write(s)
-        print('STRONG SPAM PATCH OK')
+        s = s[:a2] + new_sa + s[b2:]
+        n += 1
+    else:
+        print('BRAIN PATCH MISS: shouldAutoAnswer')
+
+    rep('info("Spam call apne aap uthayi", CallHolder.label(this, call))',
+        'info("Spam call apne aap uthayi", CallHolder.label(this, call) + "  |  " + lastReason)')
+    open(p, 'w', encoding='utf-8').write(s)
+    print('BRAIN PATCH OK: ' + str(n))
 PY
