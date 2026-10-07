@@ -28,3 +28,24 @@ if os.path.exists(p):
         open(p, 'w', encoding='utf-8').write(head + body)
         print('HOME PATCH OK: ' + str(m))
 PY
+python3 - << 'PY'
+import os
+import re
+p = 'lib/settings_page.dart'
+if os.path.exists(p):
+    s = open(p, encoding='utf-8').read()
+    if "'spamAnswerSus'" in s:
+        print('SETTINGS STRONG ALREADY')
+    else:
+        s = s.replace("'spamAnswer': false,", "'spamAnswer': false,\n  'spamAnswerSus': false,\n  'spamAnswerAll': false,", 1)
+        rows = """          _sw('spamAnswerSus', 'Shak wali calls bhi uthao', 'Chhupe, videshi, ajeeb ya baar baar aane wale unknown number. Upar wala switch on ho tabhi', enabled: _v['spamAnswer'] ?? false),
+          _sw('spamAnswerAll', 'Har unknown number uthao (savdhan)', 'Contacts me na hone wale har number ko chup rehke uthayega. Zaroori call (delivery, doctor) bhi chhut sakti hai', enabled: _v['spamAnswer'] ?? false),
+"""
+        m = re.search(r"[ ]*_sw\('spamAnswer'[^\n]*\n", s)
+        if m:
+            s = s[:m.end()] + rows + s[m.end():]
+            open(p, 'w', encoding='utf-8').write(s)
+            print('SETTINGS STRONG PATCH OK')
+        else:
+            print('SETTINGS STRONG MISS: spamAnswer row nahi mili')
+PY
