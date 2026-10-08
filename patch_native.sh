@@ -248,3 +248,103 @@ if os.path.exists(r) and os.path.exists(base + 'CgLog.kt'):
         open(r, 'w', encoding='utf-8').write(u)
 print('REPORT NATIVE DONE: ' + str(n))
 PY
+python3 - << 'PY'
+import os
+base = 'android/app/src/main/kotlin/com/example/call_guard/'
+n = 0
+
+m = base + 'MainActivity.kt'
+if os.path.exists(m):
+    t = open(m, encoding='utf-8').read()
+    if 'CallLog.Calls.DURATION' not in t:
+        a = 'CallLog.Calls.DATE, CallLog.Calls.TYPE)'
+        b = '"type" to it.getInt(3)'
+        if a in t and b in t:
+            t = t.replace(a, 'CallLog.Calls.DATE, CallLog.Calls.TYPE, CallLog.Calls.DURATION)', 1)
+            t = t.replace(b, '"type" to it.getInt(3),\n                    "dur" to it.getLong(4)', 1)
+            open(m, 'w', encoding='utf-8').write(t)
+            n += 1
+        else:
+            print('DURATION MISS: MainActivity readCalls')
+
+p = base + 'CallGuardInCallService.kt'
+if os.path.exists(p):
+    s = open(p, encoding='utf-8').read()
+    if 'postEnded' not in s:
+        fn = r'''    private fun postEnded(info: String, sec: Long) {
+        try {
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(
+                    NotificationChannel("cg_ended", "Call khatam", NotificationManager.IMPORTANCE_DEFAULT)
+                )
+            }
+            val b = if (Build.VERSION.SDK_INT >= 26) {
+                Notification.Builder(this, "cg_ended")
+            } else {
+                Notification.Builder(this)
+            }
+            val mm = sec / 60
+            val ss = sec % 60
+            val d = if (mm > 0) mm.toString() + " min " + ss.toString() + " sec" else ss.toString() + " sec"
+            b.setSmallIcon(android.R.drawable.ic_menu_call)
+            b.setContentTitle("Call khatam  |  " + d)
+            b.setContentText(info)
+            b.setAutoCancel(true)
+            val launch = packageManager.getLaunchIntentForPackage(packageName)
+            if (launch != null) {
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                b.setContentIntent(PendingIntent.getActivity(this, 4, launch, flags))
+            }
+            nm.notify(7300 + (System.currentTimeMillis() % 40).toInt(), b.build())
+        } catch (e: Throwable) {
+        }
+    }
+
+'''
+        a1 = '    private fun postMissed(info: String) {'
+        if a1 in s:
+            s = s.replace(a1, fn + a1, 1)
+            n += 1
+        else:
+            print('ENDED MISS: postMissed')
+        a2 = '        if (wasIncoming && !answered && !auto &&'
+        blk = r'''        try {
+            val ct = call.details.connectTimeMillis
+            if (answered && !auto && ct > 0) {
+                postEnded(info, (System.currentTimeMillis() - ct) / 1000)
+            }
+        } catch (e: Throwable) {
+        }
+'''
+        if a2 in s:
+            s = s.replace(a2, blk + a2, 1)
+            n += 1
+        else:
+            print('ENDED MISS: onCallRemoved')
+        open(p, 'w', encoding='utf-8').write(s)
+
+r = base + 'SpamAssistant.kt'
+if os.path.exists(r) and os.path.exists(base + 'CallSummary.kt'):
+    u = open(r, encoding='utf-8').read()
+    if 'CallSummary' not in u:
+        def rep(a, b):
+            global u, n
+            if a in u:
+                u = u.replace(a, b, 1)
+                n += 1
+            else:
+                print('SUMMARY MISS: ' + a[:45])
+        rep('    private var player: MediaPlayer? = null',
+            '    private var player: MediaPlayer? = null\n    private var recStartMs = 0L')
+        rep('            rec = r\n            recFile = f',
+            '            rec = r\n            recFile = f\n            recStartMs = System.currentTimeMillis()')
+        rep('            o.put("s", f.length())',
+            '            o.put("s", f.length())\n            o.put("d", (System.currentTimeMillis() - recStartMs) / 1000)')
+        rep('"size" to o.optLong("s")',
+            '"size" to o.optLong("s"),\n                            "summary" to o.optString("m"),\n                            "dur" to o.optLong("d")')
+        rep('            addMeta(ctx, f)\n            notifyDone(ctx)',
+            '            addMeta(ctx, f)\n            notifyDone(ctx)\n            CallSummary.run(ctx, f.absolutePath, info)')
+        open(r, 'w', encoding='utf-8').write(u)
+print('DURATION AND SUMMARY NATIVE DONE: ' + str(n))
+PY
