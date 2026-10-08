@@ -125,3 +125,22 @@ if os.path.exists('lib/applock.dart'):
         else:
             print('LOCAL_AUTH MISS: flutter_tts line nahi mili')
 PY
+python3 - << 'PY'
+import os
+if os.path.exists('lib/callreport.dart') and os.path.exists('lib/settings_page.dart'):
+    q = 'lib/settings_page.dart'
+    t = open(q, encoding='utf-8').read()
+    if 'CallReportTile' in t:
+        print('REPORT TILE ALREADY')
+    else:
+        t = t.replace("import 'core.dart';", "import 'core.dart';\nimport 'callreport.dart';", 1)
+        if 'const AssistantSettingsTile(),' in t:
+            t = t.replace('const AssistantSettingsTile(),', 'const AssistantSettingsTile(),\n          const CallReportTile(),', 1)
+            print('REPORT TILE OK')
+        elif "_head('AI')," in t:
+            t = t.replace("_head('AI'),", "const CallReportTile(),\n          _head('AI'),", 1)
+            print('REPORT TILE OK (AI ke upar)')
+        else:
+            print('REPORT TILE MISS')
+        open(q, 'w', encoding='utf-8').write(t)
+PY
