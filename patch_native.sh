@@ -137,3 +137,49 @@ for g in ('android/app/build.gradle.kts', 'android/app/build.gradle'):
         n += 1
 print('BIOMETRIC SETUP DONE: ' + str(n))
 PY
+python3 - << 'PY'
+import os
+base = 'android/app/src/main/kotlin/com/example/call_guard/'
+if not os.path.exists(base + 'SpamAssistant.kt'):
+    print('ASSISTANT FILE NAHI HAI, skip')
+else:
+    ok = 0
+    p = base + 'CallGuardInCallService.kt'
+    s = open(p, encoding='utf-8').read()
+    if 'SpamAssistant' not in s:
+        a = 's.setMuted(true)'
+        if a in s:
+            s = s.replace(a, 'if (SpamAssistant.start(s, call, s.infoMap[call] ?: "Unknown")) { s.openUi() } else { s.setMuted(true) }', 1)
+            ok += 1
+        else:
+            print('ASSISTANT MISS: setMuted')
+        if '}, 30000)' in s:
+            s = s.replace('}, 30000)', '}, 45000)', 1)
+            ok += 1
+        else:
+            print('ASSISTANT MISS: 30000')
+        b = 'val wasIncoming = incomingCalls.remove(call)'
+        if b in s:
+            s = s.replace(b, 'SpamAssistant.stop(this)\n        ' + b, 1)
+            ok += 1
+        else:
+            print('ASSISTANT MISS: onCallRemoved')
+        open(p, 'w', encoding='utf-8').write(s)
+    m = base + 'MainActivity.kt'
+    t = open(m, encoding='utf-8').read()
+    if 'listRecs' not in t:
+        key = '"requestNotificationPermission" -> requestNotif(result)'
+        if key in t:
+            add = key + '\n'
+            add += '                    "listRecs" -> result.success(SpamAssistant.list(this))\n'
+            add += '                    "deleteRec" -> result.success(SpamAssistant.delete(this, call.argument<String>("path") ?: ""))\n'
+            add += '                    "playRec" -> result.success(SpamAssistant.play(this, call.argument<String>("path") ?: ""))\n'
+            add += '                    "stopRec" -> { SpamAssistant.stopPlay(); result.success(true) }\n'
+            add += '                    "requestMic" -> { if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) { result.success(true) } else { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1011); result.success(false) } }'
+            t = t.replace(key, add, 1)
+            open(m, 'w', encoding='utf-8').write(t)
+            ok += 1
+        else:
+            print('ASSISTANT MISS: MainActivity key')
+    print('ASSISTANT NATIVE OK: ' + str(ok))
+PY
