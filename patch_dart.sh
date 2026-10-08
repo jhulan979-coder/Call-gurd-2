@@ -144,3 +144,57 @@ if os.path.exists('lib/callreport.dart') and os.path.exists('lib/settings_page.d
             print('REPORT TILE MISS')
         open(q, 'w', encoding='utf-8').write(t)
 PY
+python3 - << 'PY'
+import os
+n = 0
+
+p = 'lib/core.dart'
+if os.path.exists(p):
+    s = open(p, encoding='utf-8').read()
+    if 'String cgDur' not in s:
+        s += "\nString cgDur(int s) {\n  if (s <= 0) return '';\n  final m = s ~/ 60;\n  final r = s % 60;\n  return m > 0 ? m.toString() + 'm ' + r.toString() + 's' : r.toString() + 's';\n}\n\nString cgAgo(int date, int dur) {\n  return timeAgo(date) + (dur > 0 ? '  |  ' + cgDur(dur) : '');\n}\n"
+        open(p, 'w', encoding='utf-8').write(s)
+        n += 1
+
+q = 'lib/calls_tab.dart'
+if os.path.exists(q):
+    t = open(q, encoding='utf-8').read()
+    if 'final int dur;' not in t:
+        a = '  final int type;\n  CallItem(this.number, this.name, this.date, this.type);'
+        b = "(m['date'] ?? 0) as int, (m['type'] ?? 0) as int));"
+        if a in t and b in t:
+            t = t.replace(a, '  final int type;\n  final int dur;\n  CallItem(this.number, this.name, this.date, this.type, [this.dur = 0]);', 1)
+            t = t.replace(b, "(m['date'] ?? 0) as int, (m['type'] ?? 0) as int,\n          (m['dur'] ?? 0) as int));", 1)
+            open(q, 'w', encoding='utf-8').write(t)
+            n += 1
+        else:
+            print('DURATION MISS: calls_tab CallItem')
+
+m = 'lib/main.dart'
+if os.path.exists(m):
+    x = open(m, encoding='utf-8').read()
+    if 'cgAgo(' not in x:
+        b = "(m['date'] ?? 0) as int, (m['type'] ?? 0) as int));"
+        if b in x and 'timeAgo(c.date)' in x:
+            x = x.replace(b, "(m['date'] ?? 0) as int, (m['type'] ?? 0) as int,\n              (m['dur'] ?? 0) as int));", 1)
+            x = x.replace('timeAgo(c.date)', 'cgAgo(c.date, c.dur)')
+            open(m, 'w', encoding='utf-8').write(x)
+            n += 1
+        else:
+            print('DURATION MISS: main Home list')
+
+r = 'lib/recordings.dart'
+if os.path.exists(r):
+    y = open(r, encoding='utf-8').read()
+    if 'cgDur(' not in y:
+        a1 = '      _items = list;\n      _loading = false;'
+        a2 = "subtitle: Text(_when(r['ts'] as int)),"
+        if a1 in y and a2 in y:
+            y = y.replace(a1, "      _items = list;\n      for (final rr in list) {\n        final sm = (rr['summary'] ?? '') as String;\n        if (sm.isNotEmpty) _sum[rr['path'] as String] = sm;\n      }\n      _loading = false;", 1)
+            y = y.replace(a2, "subtitle: Text(_when(r['ts'] as int) + (((r['dur'] ?? 0) as int) > 0 ? '  |  ' + cgDur((r['dur'] ?? 0) as int) : '')),", 1)
+            open(r, 'w', encoding='utf-8').write(y)
+            n += 1
+        else:
+            print('SUMMARY MISS: recordings page')
+print('DURATION AND SUMMARY DART DONE: ' + str(n))
+PY
