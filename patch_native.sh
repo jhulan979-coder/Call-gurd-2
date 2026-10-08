@@ -183,3 +183,68 @@ else:
             print('ASSISTANT MISS: MainActivity key')
     print('ASSISTANT NATIVE OK: ' + str(ok))
 PY
+python3 - << 'PY'
+import os
+base = 'android/app/src/main/kotlin/com/example/call_guard/'
+n = 0
+p = base + 'CallGuardInCallService.kt'
+if os.path.exists(p) and os.path.exists(base + 'CgLog.kt'):
+    s = open(p, encoding='utf-8').read()
+    if 'CgLog' not in s:
+        i = s.find('private fun shouldAutoAnswer(call: Call): Boolean {')
+        j = s.find('val dn = call.details.callerDisplayName', i) if i >= 0 else -1
+        if i >= 0 and j > i:
+            s = s[:j] + 'if (n.length == 10 && isSpamNum(n)) return true\n            ' + s[j:]
+            n += 1
+        else:
+            print('BLOCKFIX MISS')
+        a = 'if (shouldAutoAnswer(call)) {'
+        if a in s:
+            s = s.replace(a, 'val autoDec = shouldAutoAnswer(call)\n            CgLog.add(this, "INCALL " + (infoMap[call] ?: "?") + " auto=" + autoDec + " spamAnswer=" + prefs().getBoolean("flutter.spamAnswer", false) + " assistant=" + prefs().getBoolean("flutter.assistant", false))\n            if (autoDec) {', 1)
+            n += 1
+        else:
+            print('LOG MISS: shouldAutoAnswer call')
+        open(p, 'w', encoding='utf-8').write(s)
+q = base + 'CallGuardScreeningService.kt'
+if os.path.exists(q) and os.path.exists(base + 'CgLog.kt'):
+    t = open(q, encoding='utf-8').read()
+    if 'CgLog' not in t:
+        a = 'override fun onScreenCall(callDetails: Call.Details) {'
+        if a in t:
+            t = t.replace(a, a + '\n        try { CgLog.add(this, "SCREEN " + (callDetails.handle?.schemeSpecificPart ?: "hidden")) } catch (e: Throwable) {}', 1)
+            n += 1
+        else:
+            print('LOG MISS: onScreenCall')
+        b = 'respondToCall(callDetails, response)'
+        if b in t:
+            t = t.replace(b, 'try { CgLog.add(this, "SCREEN result reject=" + response.disallowCall) } catch (e: Throwable) {}\n        ' + b, 1)
+            n += 1
+        else:
+            print('LOG MISS: respondToCall')
+        open(q, 'w', encoding='utf-8').write(t)
+r = base + 'SpamAssistant.kt'
+if os.path.exists(r) and os.path.exists(base + 'CgLog.kt'):
+    u = open(r, encoding='utf-8').read()
+    if 'CgLog' not in u:
+        def rep(a, b):
+            global u, n
+            if a in u:
+                u = u.replace(a, b, 1)
+                n += 1
+            else:
+                print('ASSIST LOG MISS: ' + a[:45])
+        rep('if (!p.getBoolean("flutter.assistant", false)) return false',
+            'if (!p.getBoolean("flutter.assistant", false)) { CgLog.add(ctx, "ASSISTANT band hai, Settings me on karo"); return false }')
+        rep('        active = true\n        info = who',
+            '        active = true\n        CgLog.add(ctx, "ASSISTANT start")\n        info = who')
+        rep('if (ctx.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return',
+            'if (ctx.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) { CgLog.add(ctx, "REC mic permission nahi"); return }')
+        rep('            r.start()\n            rec = r\n            recFile = f',
+            '            r.start()\n            rec = r\n            recFile = f\n            CgLog.add(ctx, "REC start ok")')
+        rep('        } catch (e: Throwable) {\n            rec = null\n            recFile = null\n        }',
+            '        } catch (e: Throwable) {\n            CgLog.add(ctx, "REC start FAIL " + e.toString())\n            rec = null\n            recFile = null\n        }')
+        rep('        if (ok && f != null && f.exists() && f.length() > 2000) {',
+            '        CgLog.add(ctx, "REC stop ok=" + ok + " size=" + (f?.length() ?: -1))\n        if (ok && f != null && f.exists() && f.length() > 2000) {')
+        open(r, 'w', encoding='utf-8').write(u)
+print('REPORT NATIVE DONE: ' + str(n))
+PY
