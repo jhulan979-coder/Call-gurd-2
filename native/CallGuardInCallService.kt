@@ -179,6 +179,7 @@ class CallGuardInCallService : InCallService() {
         if (call.state == Call.STATE_RINGING) {
             incomingCalls.add(call)
            AiGuess.check(applicationContext, call)
+           CallOverlay.prepare(call)
             if (shouldAutoAnswer(call)) {
                 startAutoAnswer(call)
             } else {
