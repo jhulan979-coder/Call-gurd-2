@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core.dart';
 import 'lang.dart';
+import 'extras.dart';
 import 'recordings.dart';
 
 const _sn = MethodChannel('callguard/native');
@@ -270,6 +271,20 @@ class _SettingsPageState extends State<SettingsPage>
             subtitle: const Text('Suno ya delete karo'),
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const RecordingsPage())),
+          ),
+                    ListTile(
+            leading: const Icon(Icons.record_voice_over_outlined),
+            title: const Text('Bol ke call lagao'),
+            subtitle: const Text('Mic dabao aur bolo: Ravi ko call lagao'),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const VoiceDialPage())),
+          ),
+          ListTile(
+            leading: const Icon(Icons.backup_outlined),
+            title: const Text('Block list backup / restore'),
+            subtitle: const Text('Copy karke save karo, naye phone me wapas daalo'),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const BackupPage())),
           ),
           _head('AI'),
           ListTile(
