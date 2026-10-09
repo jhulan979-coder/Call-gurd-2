@@ -107,6 +107,7 @@ class _SettingsPageState extends State<SettingsPage>
             ['hi', 'Hinglish'],
             ['en', 'English'],
             ['or', 'ଓଡ଼ିଆ (Odia)'],
+            ['hd', 'हिन्दी'],
           ])
             SimpleDialogOption(
               onPressed: () async {
