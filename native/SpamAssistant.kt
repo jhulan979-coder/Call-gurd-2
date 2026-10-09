@@ -110,7 +110,7 @@ object SpamAssistant {
             dir.mkdirs()
             val f = File(dir, "rec_" + System.currentTimeMillis() + ".aac")
             val r = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(ctx) else MediaRecorder()
-            r.setAudioSource(MediaRecorder.AudioSource.MIC)
+            r.setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
             r.setOutputFormat(MediaRecorder.OutputFormat.AAC_ADTS)
             r.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             r.setAudioSamplingRate(16000)
