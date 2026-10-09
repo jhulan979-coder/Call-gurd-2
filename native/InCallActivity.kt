@@ -150,6 +150,7 @@ class InCallActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        CallOverlay.hide()
         CallHolder.call?.registerCallback(cb)
         refresh()
         handler.removeCallbacks(tick)
@@ -158,6 +159,7 @@ class InCallActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        CallOverlay.showLast(applicationContext)
         handler.removeCallbacks(tick)
         try {
             CallHolder.call?.unregisterCallback(cb)
