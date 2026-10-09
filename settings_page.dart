@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core.dart';
 import 'lang.dart';
+import 'recordings.dart';
 
 const _sn = MethodChannel('callguard/native');
 
@@ -262,6 +263,13 @@ class _SettingsPageState extends State<SettingsPage>
           _head('AI assistant'),
           _sw('spamAnswer', 'Spam call apne aap uthao', 'Spam number ki call khud uthegi'),
           _sw('assistant', 'AI assistant', 'Uthayi hui call par assistant bolega aur recording karega'),
+           ListTile(
+            leading: const Icon(Icons.mic_none),
+            title: const Text('AI assistant recordings'),
+            subtitle: const Text('Suno ya delete karo'),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const RecordingsPage())),
+          ),
           _head('AI'),
           ListTile(
             leading: const Icon(Icons.vpn_key_outlined),
