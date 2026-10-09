@@ -18,7 +18,7 @@ const _defaults = <String, bool>{
   'blockHidden': false,
   'blockIntl': false,
   'spamAnswer': false,
-  'assistant': false,
+  
 };
 
 class SettingsPage extends StatefulWidget {
@@ -86,7 +86,7 @@ class _SettingsPageState extends State<SettingsPage>
         await _sn.invokeMethod<bool>('requestMic');
       } catch (_) {}
     }
-  }y
+  }
 
   String get _langName {
     final l = langNotifier.value;
