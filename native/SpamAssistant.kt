@@ -31,6 +31,7 @@ object SpamAssistant {
     private var info = ""
     private var active = false
     private var player: MediaPlayer? = null
+    private var callRef: Call? = null
 
     fun start(svc: InCallService, call: Call, who: String): Boolean {
         val ctx = svc.applicationContext
@@ -39,6 +40,7 @@ object SpamAssistant {
         if (active) return true
         active = true
         info = who
+        callRef = call
         val name = p.getString("flutter.assistantName", "Rakesh") ?: "Rakesh"
         try {
             svc.setMuted(false)
@@ -76,11 +78,10 @@ object SpamAssistant {
                     val text: String
                     if (tt.isLanguageAvailable(Locale("hi", "IN")) >= TextToSpeech.LANG_AVAILABLE) {
                         tt.language = Locale("hi", "IN")
-                        text = "नमस्ते। मैं " + name + " का असिस्टेंट बोल रहा हूँ। यह कॉल रिकॉर्ड हो रही है। आपको क्या काम है?"
+                        text = "नमस्ते। मैं " + name + " का असिस्टेंट बोल रहा हूँ। मालिक इस नंबर से किसी भी ऑफ़र में इंटरेस्टेड नहीं हैं। कृपया इस नंबर को अपनी लिस्ट से हटा दें। धन्यवाद।"
                     } else {
                         tt.language = Locale("en", "IN")
-                        text = "Hello. I am " + name + "'s assistant. This call is being recorded. How can I help you?"
-                    }
+                        text = "Hello. I am " + name + "'s assistant. The owner is not interested in any offers. Please remove this number from your list. Thank you."
                     tt.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {
                         }
@@ -104,6 +105,8 @@ object SpamAssistant {
 
     private fun startRec(ctx: Context) {
         if (!active || rec != null) return
+            h.postDelayed({ try { callRef?.disconnect() } catch (e: Throwable) {} }, 1500)
+        return
         try {
             if (ctx.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
             val dir = File(ctx.filesDir, "recs")
