@@ -1,4 +1,5 @@
 grep -q SEND_SMS android/app/src/main/AndroidManifest.xml || sed -i 's#<application#<uses-permission android:name="android.permission.SEND_SMS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+grep -q SYSTEM_ALERT_WINDOW android/app/src/main/AndroidManifest.xml || sed -i 's#<application#<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>\n    <application#' android/app/src/main/AndroidManifest.xml
 python3 - << 'PY'
 import os
 p = 'android/app/src/main/kotlin/com/example/call_guard/CallGuardInCallService.kt'
