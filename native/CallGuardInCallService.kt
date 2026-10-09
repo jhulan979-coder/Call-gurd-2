@@ -1,3 +1,4 @@
+
 package com.example.call_guard
 
 import android.app.Notification
@@ -215,6 +216,7 @@ class CallGuardInCallService : InCallService() {
             cause != DisconnectCause.REJECTED && cause != DisconnectCause.LOCAL
         ) {
             postMissed(info)
+            AutoSms.reply(this, call)
         }
     }
 
