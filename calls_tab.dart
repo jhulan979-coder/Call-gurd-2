@@ -27,6 +27,7 @@ class _CallsTabState extends State<CallsTab> {
   bool _loading = true;
   bool _granted = false;
   bool _asked = false;
+  bool _notDefault = false;
   String? _error;
   List<CallItem> _items = [];
 
@@ -49,9 +50,12 @@ class _CallsTabState extends State<CallsTab> {
       _error = null;
     });
     try {
-      final has =
-          await _native.invokeMethod<bool>('hasCallLogPermission') ?? false;
+    final isDef =
+          await _native.invokeMethod<bool>('isDefaultDialer') ?? false;
+      final has = isDef &&
+          (await _native.invokeMethod<bool>('hasCallLogPermission') ?? false);
       _granted = has;
+      _notDefault = !isDef;
       if (has) await _loadCalls();
     } catch (e) {
       _error = 'Call list nahi khul paayi: $e';
@@ -187,6 +191,17 @@ class _CallsTabState extends State<CallsTab> {
 
   Widget _recentView() {
     if (_loading) return const Center(child: CircularProgressIndicator());
+        if (_notDefault) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'Recent calls dekhne ke liye Pehredaar ko default Phone app banao. Settings me button hai.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+        }
     if (!_granted) {
       return Center(
         child: Padding(
