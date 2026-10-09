@@ -55,7 +55,7 @@ object CallOverlay {
                 val dm = ctx.resources.displayMetrics
                 val dp = dm.density
                 val tv = TextView(ctx)
-                tv.text = r.badge + (if (circ != null) "  |  " + circ else "") + "\n" + r.reasons.joinToString(", ")
+                tv.text = r.badge + (if (circ != null) "  |  " + circ else "") + "\n" + r.reasons.joinToString(", ")+ "\n\n" + CallAdvice.text(r.score)
                 tv.textSize = 15f
                 tv.setTextColor(Color.WHITE)
                 tv.gravity = Gravity.CENTER
