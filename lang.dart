@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart' as m;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'lang_hd.dart';
 
 final langNotifier = m.ValueNotifier<String>('hi');
+const Map<String, String> langNames = {'hd': 'हिन्दी'};
+
+final Map<String, Map<String, String>> extraLangs = {'hd': hdStrings};
 
 Future<void> loadLang() async {
   final p = await SharedPreferences.getInstance();
@@ -212,7 +216,12 @@ final List<String> _pk = _p.keys.toList()
 String tr(String s) {
   final l = langNotifier.value;
   if (l == 'hi') return s;
-  final i = l == 'en' ? 0 : 1;
+  final x = extraLangs[l];
+  if (x != null) {
+    final v = x[s];
+    if (v != null) return v;
+  }
+  final i = l == 'or' ? 1 : 0;
   final ex = _t[s];
   if (ex != null) return ex[i];
   var out = s;
