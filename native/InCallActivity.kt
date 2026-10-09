@@ -103,6 +103,19 @@ class InCallActivity : Activity() {
         s.setPadding(0, dp(10), 0, 0)
         stateView = s
         root.addView(s)
+                val cd = TextView(this)
+        cd.textSize = 15f
+        cd.setTextColor(Color.WHITE)
+        cd.gravity = Gravity.CENTER
+        cd.setPadding(dp(16), dp(12), dp(16), dp(12))
+        cd.visibility = View.GONE
+        cardView = cd
+        val cdp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        cdp.topMargin = dp(24)
+        root.addView(cd, cdp)
 
         val gap = View(this)
         root.addView(gap, LinearLayout.LayoutParams(1, 0, 1f))
