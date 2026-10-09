@@ -66,6 +66,8 @@ class _AiTabState extends State<AiTab> {
 
   Future<String?> _callContext() async {
     try {
+            final isDef = await _cn.invokeMethod<bool>('isDefaultDialer') ?? false;
+      if (!isDef) return null;
       final has =
           await _cn.invokeMethod<bool>('hasCallLogPermission') ?? false;
       if (!has) return null;
