@@ -315,6 +315,28 @@ class InCallActivity : Activity() {
         nameView?.text = name
         nameView?.setTextColor(if (spam) Color.parseColor("#FF8A80") else Color.WHITE)
         numView?.text = if (name == raw) "" else raw
+                try {
+            val r = SpamBrain.evaluate(this, raw)
+            val cdv = cardView
+            if (cdv != null) {
+                if (r.score <= 0) {
+                    cdv.visibility = View.GONE
+                } else {
+                    val circ = CallHolder.circles[num]
+                    val bg2 = GradientDrawable()
+                    bg2.cornerRadius = dp(16).toFloat()
+                    bg2.setColor(
+                        if (r.score >= 65) Color.parseColor("#B71C1C")
+                        else if (r.score >= 35) Color.parseColor("#E65100")
+                        else Color.parseColor("#37474F")
+                    )
+                    cdv.background = bg2
+                    cdv.text = r.badge + (if (circ != null) "  |  " + circ else "") + "\n" + r.reasons.joinToString(", ")
+                    cdv.visibility = View.VISIBLE
+                }
+            }
+        } catch (e: Throwable) {
+        }
         updateText()
 
         val m = mid
