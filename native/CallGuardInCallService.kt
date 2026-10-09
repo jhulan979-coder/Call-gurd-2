@@ -204,6 +204,7 @@ class CallGuardInCallService : InCallService() {
         val auto = autoCalls.remove(call)
         val info = infoMap.remove(call) ?: "Unknown"
         CallSpeak.say(applicationContext, info, auto, answered)
+        CallOverlay.clear()
         var cause = -1
         try {
             cause = call.details.disconnectCause?.code ?: -1
