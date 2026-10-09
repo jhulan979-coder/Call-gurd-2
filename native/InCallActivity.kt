@@ -333,7 +333,7 @@ class InCallActivity : Activity() {
                         else Color.parseColor("#37474F")
                     )
                     cdv.background = bg2
-                    cdv.text = r.badge + (if (circ != null) "  |  " + circ else "") + "\n" + r.reasons.joinToString(", ")
+                    cdv.text = r.badge + (if (circ != null) "  |  " + circ else "") + "\n" + r.reasons.joinToString(", ") + "\n\n" + CallAdvice.text(r.score)
                     cdv.visibility = View.VISIBLE
                 }
             }
