@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'core.dart';
+
+const _cn = MethodChannel('callguard/native');
 
 class AiTab extends StatefulWidget {
   const AiTab({super.key});
@@ -16,11 +19,91 @@ class _AiTabState extends State<AiTab> {
   bool _loading = false;
 
   static const _quick = [
+    'Is hafte kaun spam tha?',
+    'Kal kisne call kiya?',
     'Bank se call aaya, OTP maang raha hai',
     'Lottery jeetne ka call aaya',
-    'KYC update ka message aaya',
-    'Ek number baar-baar call kar raha hai',
   ];
+
+  bool _wantsHistory(String t) {
+    final s = t.toLowerCase();
+    for (final k in const [
+      'kisne',
+      'is hafte',
+      'kal ',
+      'aaj ',
+      'miss',
+      'history',
+      'recent',
+      'kaun spam',
+      'kitne call',
+      'kitni call',
+      'pichli'
+    ]) {
+      if (s.contains(k)) return true;
+    }
+    return false;
+  }
+
+  String _two(int x) => x < 10 ? '0$x' : '$x';
+
+  String _typeName(int t) {
+    switch (t) {
+      case 1:
+        return 'aayi';
+      case 2:
+        return 'gayi';
+      case 3:
+        return 'miss';
+      case 5:
+        return 'reject';
+      case 6:
+        return 'block';
+      default:
+        return 'other';
+    }
+  }
+
+  Future<String?> _callContext() async {
+    try {
+      final has =
+          await _cn.invokeMethod<bool>('hasCallLogPermission') ?? false;
+      if (!has) return null;
+      final raw =
+          await _cn.invokeMethod<List<dynamic>>('getRecentCalls') ?? [];
+      final now = DateTime.now();
+      final sb = StringBuffer();
+      sb.writeln(
+          'Abhi ka samay: ${now.day}/${now.month}/${now.year} ${_two(now.hour)}:${_two(now.minute)}');
+      sb.writeln('Meri recent call history (naya pehle):');
+      var count = 0;
+      for (final r in raw) {
+        if (count >= 40) break;
+        final m = Map<String, dynamic>.from(r as Map);
+        final n = last10((m['number'] ?? '') as String);
+        final name = (m['name'] ?? '') as String;
+        final date = (m['date'] ?? 0) as int;
+        final type = (m['type'] ?? 0) as int;
+        final dur = (m['dur'] ?? 0) as int;
+        final d = DateTime.fromMillisecondsSinceEpoch(date);
+        final who = name.isNotEmpty
+            ? name
+            : (n.length >= 4 ? '...${n.substring(n.length - 4)}' : 'Unknown');
+        var tag = '';
+        if (store.findBlocked(n) != null) {
+          tag = ', meri block list me';
+        } else if (n.startsWith('140') || n.startsWith('160')) {
+          tag = ', telemarketing series';
+        }
+        sb.writeln(
+            '- $who | ${_typeName(type)} | ${d.day}/${d.month} ${_two(d.hour)}:${_two(d.minute)} | ${dur}s$tag');
+        count++;
+      }
+      return sb.toString();
+    } catch (_) {
+      return null;
+    }
+  }
 
   void _scrollDown() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -41,7 +124,21 @@ class _AiTabState extends State<AiTab> {
     });
     _scrollDown();
     try {
-      final history = _messages.where((m) => m['role'] != 'error').toList();
+      final history = _messages
+          .where((m) => m['role'] != 'error')
+          .map((m) => Map<String, String>.from(m))
+          .toList();
+      if (_wantsHistory(text)) {
+        final c = await _callContext();
+        if (c == null) {
+          throw Exception(
+              'Call history ke liye Calls tab me call log ki permission do, phir dobara pucho.');
+        }
+        history.last['content'] = text +
+            '\n\n' +
+            c +
+            '\nSirf is history ke aadhaar par chhota jawab do. Kisi number ko pakka spam mat batao, sirf andaza batao.';
+      }
       final reply = await askAI(aiSystem, history);
       if (!mounted) return;
       setState(() => _messages.add({'role': 'assistant', 'content': reply}));
@@ -60,11 +157,11 @@ class _AiTabState extends State<AiTab> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const Text('AI chalane ke liye API key daalo',
+        const Text('AI chalane ke liye Gemini API key daalo',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         const Text(
-            'Key console.anthropic.com se banti hai (API Keys section). Ye sirf aapke phone me save hoti hai.'),
+            'Key Google AI Studio (aistudio.google.com) se banti hai. Ye sirf aapke phone me save hoti hai.'),
         const SizedBox(height: 16),
         TextField(
           controller: _keyInput,
