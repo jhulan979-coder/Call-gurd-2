@@ -94,7 +94,7 @@ class _SettingsPageState extends State<SettingsPage>
     if (l == 'en') return 'English';
     if (l == 'or') return 'ଓଡ଼ିଆ (Odia)';
     return 'Hinglish';
-    ['hd', 'हिन्दी'],
+    [ 'हिन्दी'],
   }
 
   Future<void> _pickLang() async {
