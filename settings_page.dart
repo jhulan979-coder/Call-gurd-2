@@ -17,6 +17,8 @@ const _defaults = <String, bool>{
   'blockTele': false,
   'blockHidden': false,
   'blockIntl': false,
+  'spamAnswer': false,
+  'assistant': false,
 };
 
 class SettingsPage extends StatefulWidget {
@@ -75,11 +77,16 @@ class _SettingsPageState extends State<SettingsPage>
     _checkDefault();
   }
 
-  Future<void> _set(String k, bool x) async {
+    Future<void> _set(String k, bool x) async {
     setState(() => _v[k] = x);
     final p = await SharedPreferences.getInstance();
     await p.setBool(k, x);
-  }
+    if (k == 'assistant' && x) {
+      try {
+        await _sn.invokeMethod<bool>('requestMic');
+      } catch (_) {}
+    }
+  }y
 
   String get _langName {
     final l = langNotifier.value;
@@ -252,6 +259,9 @@ class _SettingsPageState extends State<SettingsPage>
           _head('Notification'),
           _sw('infoPopup', 'Unknown caller ka chhota popup',
               'Call aane par Call Guard ka notification'),
+          _head('AI assistant'),
+          _sw('spamAnswer', 'Spam call apne aap uthao', 'Spam number ki call khud uthegi'),
+          _sw('assistant', 'AI assistant', 'Uthayi hui call par assistant bolega aur recording karega'),
           _head('AI'),
           ListTile(
             leading: const Icon(Icons.vpn_key_outlined),
