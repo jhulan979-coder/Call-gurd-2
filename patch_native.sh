@@ -1,3 +1,15 @@
+M=android/app/src/main/AndroidManifest.xml
+K=android/app/src/main/kotlin/com/example/call_guard
+R=android/app/src/main/res
+sed -i 's/android:label="Call Guard"/android:label="Pehredaar"/' $M
+for g in android/app/build.gradle.kts android/app/build.gradle; do [ -f $g ] && sed -i 's/com\.jhulan\.callguard/com.jhulan.pehredaar/' $g; done
+sed -i 's/#1565C0/#212529/' $R/values/cg_colors.xml
+sed -i 's/#FFFFFF/#FF9933/; s/#1565C0/#212529/' $R/drawable/cg_icon_fg.xml
+sed -i 's/Call Guard/Pehredaar/g' $K/*.kt lib/*.dart
+sed -i 's/#0D1B2A/#16191C/g; s/#1B3A5C/#2B3035/g; s/#1E88E5/#FF9933/g; s/#90CAF9/#FFCC80/g' $K/InCallActivity.kt
+sed -i -E 's/(seedColor|colorSchemeSeed): *(const )?(Color\([^)]*\)|[A-Za-z0-9_.]+(\[[0-9]+\])?)/\1: const Color(0xFFFF9933)/' lib/main.dart
+grep -q 0xFFFF9933 lib/main.dart || echo "WARNING: theme rang nahi laga"
+echo "REBRAND DONE"
 grep -q SEND_SMS android/app/src/main/AndroidManifest.xml || sed -i 's#<application#<uses-permission android:name="android.permission.SEND_SMS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
 grep -q SYSTEM_ALERT_WINDOW android/app/src/main/AndroidManifest.xml || sed -i 's#<application#<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>\n    <application#' android/app/src/main/AndroidManifest.xml
 python3 - << 'PY'
