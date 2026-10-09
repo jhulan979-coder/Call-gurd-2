@@ -19,7 +19,7 @@ const _defaults = <String, bool>{
   'blockHidden': false,
   'blockIntl': false,
   'assistant': false,
-  
+  'autoSms': false,
 };
 
 class SettingsPage extends StatefulWidget {
