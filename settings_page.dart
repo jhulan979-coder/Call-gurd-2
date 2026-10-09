@@ -17,7 +17,7 @@ const _defaults = <String, bool>{
   'blockTele': false,
   'blockHidden': false,
   'blockIntl': false,
-  'spamAnswer': false,
+  'assistant': false,
   
 };
 
