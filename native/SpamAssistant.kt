@@ -57,6 +57,15 @@ object SpamAssistant {
         return true
     }
 
+    private fun endCall() {
+        h.postDelayed({
+            try {
+                callRef?.disconnect()
+            } catch (e: Throwable) {
+            }
+        }, 1500)
+    }
+
     private fun speak(ctx: Context, name: String) {
         if (!active) return
         try {
@@ -64,7 +73,7 @@ object SpamAssistant {
             t = TextToSpeech(ctx) { st ->
                 val tt = t
                 if (st != TextToSpeech.SUCCESS || tt == null) {
-                    h.post { startRec(ctx) }
+                    h.post { endCall() }
                 } else {
                     try {
                         tt.setAudioAttributes(
@@ -82,16 +91,17 @@ object SpamAssistant {
                     } else {
                         tt.language = Locale("en", "IN")
                         text = "Hello. I am " + name + "'s assistant. The owner is not interested in any offers. Please remove this number from your list. Thank you."
+                    }
                     tt.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {
                         }
 
                         override fun onDone(utteranceId: String?) {
-                            h.post { startRec(ctx) }
+                            h.post { endCall() }
                         }
 
                         override fun onError(utteranceId: String?) {
-                            h.post { startRec(ctx) }
+                            h.post { endCall() }
                         }
                     })
                     tt.speak(text, TextToSpeech.QUEUE_FLUSH, null, "cgassist")
@@ -99,14 +109,12 @@ object SpamAssistant {
             }
             tts = t
         } catch (e: Throwable) {
-            h.post { startRec(ctx) }
+            h.post { endCall() }
         }
     }
 
     private fun startRec(ctx: Context) {
         if (!active || rec != null) return
-            h.postDelayed({ try { callRef?.disconnect() } catch (e: Throwable) {} }, 1500)
-        return
         try {
             if (ctx.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
             val dir = File(ctx.filesDir, "recs")
@@ -133,6 +141,7 @@ object SpamAssistant {
     fun stop(ctx: Context) {
         if (!active) return
         active = false
+        callRef = null
         try {
             tts?.stop()
         } catch (e: Throwable) {
