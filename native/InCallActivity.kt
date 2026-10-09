@@ -27,6 +27,7 @@ class InCallActivity : Activity() {
     private var nameView: TextView? = null
     private var numView: TextView? = null
     private var stateView: TextView? = null
+    private var cardView: TextView? = null
     private var mid: LinearLayout? = null
     private var bottom: LinearLayout? = null
     private var muted = false
