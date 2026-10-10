@@ -20,6 +20,38 @@ class _AiTabState extends State<AiTab> {
   final _scroll = ScrollController();
   final List<Map<String, String>> _messages = [];
   bool _loading = false;
+   @override
+  void initState() {
+    super.initState();
+    _loadChat();
+  }
+
+  Future<void> _loadChat() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final s = p.getString('ai_chat_v1');
+      if (s == null || s.isEmpty) return;
+      final d = jsonDecode(s);
+      if (d is List) {
+        final list = <Map<String, String>>[];
+        for (final o in d) {
+          if (o is Map) {
+            list.add({'role': '${o['role']}', 'content': '${o['content']}'});
+          }
+        }
+        if (mounted) setState(() => _messages.addAll(list));
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveChat() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final keep = _messages.where((m) => m['role'] != 'error').toList();
+      final tail = keep.length > 40 ? keep.sublist(keep.length - 40) : keep;
+      await p.setString('ai_chat_v1', jsonEncode(tail));
+    } catch (_) {}
+  } 
 
   static const _quick = [
     'Is hafte kaun spam tha?',
