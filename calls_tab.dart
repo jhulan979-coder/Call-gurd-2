@@ -103,7 +103,7 @@ class _CallsTabState extends State<CallsTab> {
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _loadCalls() async {
+    Future<void> _loadCalls() async {
     final raw =
         await _native.invokeMethod<List<dynamic>>('getRecentCalls') ?? [];
     final seen = <String>{};
@@ -115,8 +115,9 @@ class _CallsTabState extends State<CallsTab> {
       if (n.length < 10 || seen.contains(n)) continue;
       seen.add(n);
       list.add(CallItem(n, (m['name'] ?? '') as String,
-      (m['date'] ?? 0) as int, (m['type'] ?? 0) as int,
-       (m['dur'] ?? 0) as int));  
+          (m['date'] ?? 0) as int, (m['type'] ?? 0) as int,
+          (m['dur'] ?? 0) as int));
+    }
     _items = list;
   }
 
