@@ -303,11 +303,17 @@ class _CallsTabState extends State<CallsTab> {
                           subtitle: Text(c.name.isNotEmpty
                               ? c.number
                               : (blocked ? 'Blocked' : 'Unknown')),
-                          trailing: Text(timeAgo(c.date)),
-                          onTap: () => _open(c),
-                        );
-                      },
-                    ),
+                                                    trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(cgWhen(c.date),
+                                  style: const TextStyle(fontSize: 12)),
+                              if (c.dur > 0)
+                                Text(cgSecs(c.dur),
+                                    style: const TextStyle(fontSize: 12)),
+                            ],
+                          ),
             ),
           ],
         );
