@@ -10,6 +10,9 @@ sed -i 's/#0D1B2A/#16191C/g; s/#1B3A5C/#2B3035/g; s/#1E88E5/#FF9933/g; s/#90CAF9
 sed -i -E 's/(seedColor|colorSchemeSeed): *(const )?(Color\([^)]*\)|[A-Za-z0-9_.]+(\[[0-9]+\])?)/\1: const Color(0xFFFF9933)/' lib/main.dart
 grep -q 0xFFFF9933 lib/main.dart || echo "WARNING: theme rang nahi laga"
 echo "REBRAND DONE"
+sed -i -E 's/gemini-[0-9][0-9a-z.-]*/gemini-flash-latest/g' lib/core.dart $K/CircleLookup.kt $K/AiGuess.kt
+grep -q spamWhy $K/MainActivity.kt || sed -i 's#"requestNotificationPermission" -> requestNotif(result)#"requestNotificationPermission" -> requestNotif(result)\n                    "spamWhy" -> { val sr = SpamBrain.evaluate(this, call.argument<String>("number") ?: ""); result.success(sr.badge + ": " + sr.reasons.joinToString(", ")) }#' $K/MainActivity.kt
+echo "AI UPDATE DONE"
 grep -q SEND_SMS android/app/src/main/AndroidManifest.xml || sed -i 's#<application#<uses-permission android:name="android.permission.SEND_SMS"/>\n    <application#' android/app/src/main/AndroidManifest.xml
 grep -q SYSTEM_ALERT_WINDOW android/app/src/main/AndroidManifest.xml || sed -i 's#<application#<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>\n    <application#' android/app/src/main/AndroidManifest.xml
 python3 - << 'PY'
