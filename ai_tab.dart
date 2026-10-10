@@ -294,7 +294,10 @@ class _AiTabState extends State<AiTab> {
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             TextButton.icon(
-              onPressed: () => setState(() => _messages.clear()),
+           onPressed: () {
+                setState(() => _messages.clear());
+                _saveChat();
+              },
               icon: const Icon(Icons.delete_sweep_outlined, size: 18),
               label: const Text('Chat saaf'),
             ),
