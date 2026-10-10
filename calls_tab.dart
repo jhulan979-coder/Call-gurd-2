@@ -414,6 +414,12 @@ class _CallSheetState extends State<CallSheet> {
       _aiText = null;
     });
     try {
+           String why = '';
+      try {
+        why = await _native.invokeMethod<String>(
+                'spamWhy', {'number': widget.item.number}) ??
+            '';
+      } catch (_) {}
       final r = await askAI(aiSystem, [
         {
           'role': 'user',
