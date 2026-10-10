@@ -96,7 +96,11 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
-    if (ok == true) await store.clearAll();
+        if (ok == true) {
+      await store.clearAll();
+      final p = await SharedPreferences.getInstance();
+      await p.remove('ai_chat_v1');
+    }
   }
 
   @override
