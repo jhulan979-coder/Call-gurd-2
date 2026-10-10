@@ -186,6 +186,7 @@ class _AiTabState extends State<AiTab> {
             'content': e.toString().replaceFirst('Exception: ', '')
           }));
     }
+    _saveChat();
     if (mounted) setState(() => _loading = false);
     _scrollDown();
   }
