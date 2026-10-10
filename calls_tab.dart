@@ -5,13 +5,39 @@ import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import 'core.dart';
 
 const _native = MethodChannel('callguard/native');
+String cgWhen(int ms) {
+  if (ms <= 0) return '';
+  final d = DateTime.fromMillisecondsSinceEpoch(ms);
+  final n = DateTime.now();
+  String two(int x) => x < 10 ? '0$x' : '$x';
+  final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
+  final t = '$h12:${two(d.minute)} ${d.hour < 12 ? 'am' : 'pm'}';
+  final diff = DateTime(n.year, n.month, n.day)
+      .difference(DateTime(d.year, d.month, d.day))
+      .inDays;
+  const mon = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+  if (diff == 0) return 'Aaj $t';
+  if (diff == 1) return 'Kal $t';
+  return '${two(d.day)} ${mon[d.month - 1]} $t';
+}
+
+String cgSecs(int s) {
+  if (s <= 0) return '';
+  final m = s ~/ 60;
+  final r = s % 60;
+  return m > 0 ? '${m}m ${r}s' : '${r}s';
+}
 
 class CallItem {
   final String number;
   final String name;
   final int date;
   final int type;
-  CallItem(this.number, this.name, this.date, this.type);
+  final int dur;
+  CallItem(this.number, this.name, this.date, this.type, [this.dur = 0]);
 }
 
 class CallsTab extends StatefulWidget {
