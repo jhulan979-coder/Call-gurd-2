@@ -429,7 +429,56 @@ class _CallSheetState extends State<CallSheet> {
   String _cat = categories[0];
   bool _aiLoading = false;
   String? _aiText;
+  
+ List<CallItem> _hist = [];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadHist();
+  }
+
+  Future<void> _loadHist() async {
+    try {
+      final isDef =
+          await _native.invokeMethod<bool>('isDefaultDialer') ?? false;
+      if (!isDef) return;
+      final has =
+          await _native.invokeMethod<bool>('hasCallLogPermission') ?? false;
+      if (!has) return;
+      final raw =
+          await _native.invokeMethod<List<dynamic>>('getRecentCalls') ?? [];
+      final list = <CallItem>[];
+      for (final r in raw) {
+        final m = Map<String, dynamic>.from(r as Map);
+        if (last10((m['number'] ?? '') as String) != widget.item.number) {
+          continue;
+        }
+        list.add(CallItem(widget.item.number, (m['name'] ?? '') as String,
+            (m['date'] ?? 0) as int, (m['type'] ?? 0) as int,
+            (m['dur'] ?? 0) as int));
+        if (list.length >= 8) break;
+      }
+      if (mounted) setState(() => _hist = list);
+    } catch (_) {}
+  }
+
+  IconData _histIcon(int t) {
+    if (t == 1) return Icons.call_received;
+    if (t == 2) return Icons.call_made;
+    if (t == 3) return Icons.call_missed;
+    if (t == 5 || t == 6) return Icons.block;
+    return Icons.phone;
+  }
+
+  String _histName(int t) {
+    if (t == 1) return 'Aayi';
+    if (t == 2) return 'Gayi';
+    if (t == 3) return 'Miss';
+    if (t == 5) return 'Reject';
+    if (t == 6) return 'Block';
+    return 'Call';
+  }
   String _verdict() {
     final n = widget.item.number;
     final b = store.findBlocked(n);
