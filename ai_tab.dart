@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'core.dart';
 
 const _cn = MethodChannel('callguard/native');
@@ -154,8 +155,71 @@ class _AiTabState extends State<AiTab> {
     if (mounted) setState(() => _loading = false);
     _scrollDown();
   }
-
   Widget _keyScreen() {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        const Text('AI ke liye apni key banao',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        const Text(
+            'Ye sirf AI wale features ke liye hai: AI chat, "AI se poochho", call history poochna. Spam score, call card, auto SMS aur baaki sab bina key ke chalta hai.'),
+        const SizedBox(height: 16),
+        const Text('3 aasan step:',
+            style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        const Text(
+            '1. Neeche "Key banao" dabao. Google AI Studio khulega, apne Gmail se login karo.'),
+        const SizedBox(height: 4),
+        const Text('2. "Create API key" dabao aur key copy karo.'),
+        const SizedBox(height: 4),
+        const Text(
+            '3. Yahan wapas aao, key paste karo aur "Save karo" dabao.'),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: () => launchUrl(
+              Uri.parse('https://aistudio.google.com/apikey'),
+              mode: LaunchMode.externalApplication),
+          icon: const Icon(Icons.open_in_new),
+          label: const Text('Key banao'),
+        ),
+        const SizedBox(height: 20),
+        TextField(
+          controller: _keyInput,
+          obscureText: true,
+          decoration: InputDecoration(
+            labelText: 'API key',
+            border: const OutlineInputBorder(),
+            suffixIcon: IconButton(
+              icon: const Icon(Icons.paste),
+              onPressed: () async {
+                final d = await Clipboard.getData('text/plain');
+                final t = d?.text;
+                if (t != null && t.trim().isNotEmpty) {
+                  _keyInput.text = t.trim();
+                }
+              },
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: () {
+            final k = _keyInput.text.trim();
+            if (k.isEmpty) return;
+            store.setKey(k);
+            _keyInput.clear();
+          },
+          child: const Text('Save karo'),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+            'Key sirf aapke phone me save hoti hai. Limit aur kharch aapki apni key par lagta hai, aur Google ki free limits badalti rehti hain.'),
+      ],
+    );
+  }
+  
+  Widget _oldKeyScreen()  {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
