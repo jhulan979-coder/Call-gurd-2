@@ -5,6 +5,7 @@ import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
 import 'core.dart';
 
 const _native = MethodChannel('callguard/native');
+
 String cgWhen(int ms) {
   if (ms <= 0) return '';
   final d = DateTime.fromMillisecondsSinceEpoch(ms);
@@ -16,8 +17,18 @@ String cgWhen(int ms) {
       .difference(DateTime(d.year, d.month, d.day))
       .inDays;
   const mon = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec'
   ];
   if (diff == 0) return 'Aaj $t';
   if (diff == 1) return 'Kal $t';
@@ -76,7 +87,7 @@ class _CallsTabState extends State<CallsTab> {
       _error = null;
     });
     try {
-    final isDef =
+      final isDef =
           await _native.invokeMethod<bool>('isDefaultDialer') ?? false;
       final has = isDef &&
           (await _native.invokeMethod<bool>('hasCallLogPermission') ?? false);
@@ -103,7 +114,7 @@ class _CallsTabState extends State<CallsTab> {
     if (mounted) setState(() => _loading = false);
   }
 
-    Future<void> _loadCalls() async {
+  Future<void> _loadCalls() async {
     final raw =
         await _native.invokeMethod<List<dynamic>>('getRecentCalls') ?? [];
     final seen = <String>{};
@@ -218,17 +229,17 @@ class _CallsTabState extends State<CallsTab> {
 
   Widget _recentView() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-        if (_notDefault) {
+    if (_notDefault) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-            'Recent calls dekhne ke liye Pehredaar ko default Phone app banao. Settings me button hai.',
+            'Recent calls dekhne ke liye Call Guard ko default Phone app banao. Settings me button hai.',
             textAlign: TextAlign.center,
           ),
         ),
       );
-        }
+    }
     if (!_granted) {
       return Center(
         child: Padding(
@@ -304,7 +315,7 @@ class _CallsTabState extends State<CallsTab> {
                           subtitle: Text(c.name.isNotEmpty
                               ? c.number
                               : (blocked ? 'Blocked' : 'Unknown')),
-                                                    trailing: Column(
+                          trailing: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
@@ -315,12 +326,18 @@ class _CallsTabState extends State<CallsTab> {
                                     style: const TextStyle(fontSize: 12)),
                             ],
                           ),
+                          onTap: () => _open(c),
+                        );
+                      },
+                    ),
             ),
           ],
         );
       },
     );
-  }Widget _contactsView() {
+  }
+
+  Widget _contactsView() {
     if (_cLoading) return const Center(child: CircularProgressIndicator());
     if (!_cGranted) {
       return Center(
@@ -430,8 +447,7 @@ class _CallSheetState extends State<CallSheet> {
   String _cat = categories[0];
   bool _aiLoading = false;
   String? _aiText;
-  
- List<CallItem> _hist = [];
+  List<CallItem> _hist = [];
 
   @override
   void initState() {
@@ -480,6 +496,7 @@ class _CallSheetState extends State<CallSheet> {
     if (t == 6) return 'Block';
     return 'Call';
   }
+
   String _verdict() {
     final n = widget.item.number;
     final b = store.findBlocked(n);
@@ -490,13 +507,59 @@ class _CallSheetState extends State<CallSheet> {
     return 'Koi spam report nahi mili';
   }
 
+  Future<void> _report() async {
+    final n = widget.item.number;
+    final d = DateTime.now();
+    String two(int x) => x < 10 ? '0$x' : '$x';
+    final date = '${two(d.day)}/${two(d.month)}/${two(d.year % 100)}';
+    final body =
+        'Spam call. Number $n. Date $date. Unsolicited commercial call.';
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Shikayat kaise karein',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            const Text(
+                'Marketing ya baar-baar aane wali call: TRAI ko 1909 par SMS. Fraud ya thagi ka shak: Chakshu par report. Paisa kat gaya ho to turant 1930.'),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                launchUrl(
+                    Uri.parse('sms:1909?body=${Uri.encodeComponent(body)}'));
+              },
+              icon: const Icon(Icons.sms_outlined),
+              label: const Text('1909 ko SMS taiyar karo'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: n));
+                launchUrl(Uri.parse('https://sancharsaathi.gov.in/sfc/'),
+                    mode: LaunchMode.externalApplication);
+              },
+              icon: const Icon(Icons.shield_outlined),
+              label: const Text('Chakshu kholo (number copy ho jayega)'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _askAi() async {
     setState(() {
       _aiLoading = true;
       _aiText = null;
     });
     try {
-           String why = '';
+      String why = '';
       try {
         why = await _native.invokeMethod<String>(
                 'spamWhy', {'number': widget.item.number}) ??
@@ -543,7 +606,7 @@ class _CallSheetState extends State<CallSheet> {
                         : Theme.of(context).textTheme.headlineSmall),
                 const SizedBox(height: 4),
                 Text(_verdict()),
-                                if (_hist.isNotEmpty) ...[
+                if (_hist.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   const Text('Call history',
                       style:
@@ -605,6 +668,12 @@ class _CallSheetState extends State<CallSheet> {
                   onPressed: _aiLoading ? null : _askAi,
                   icon: const Icon(Icons.smart_toy_outlined),
                   label: const Text('AI se poochho'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _report,
+                  icon: const Icon(Icons.report_outlined),
+                  label: const Text('Shikayat karo (TRAI / Chakshu)'),
                 ),
                 if (_aiLoading)
                   const Padding(
