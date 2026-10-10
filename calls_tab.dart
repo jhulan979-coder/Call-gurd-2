@@ -542,6 +542,31 @@ class _CallSheetState extends State<CallSheet> {
                         : Theme.of(context).textTheme.headlineSmall),
                 const SizedBox(height: 4),
                 Text(_verdict()),
+                                if (_hist.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  const Text('Call history',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  for (final h in _hist)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(_histIcon(h.type),
+                              size: 18,
+                              color: (h.type == 3 || h.type == 5 || h.type == 6)
+                                  ? Colors.red
+                                  : Colors.green),
+                          const SizedBox(width: 8),
+                          Expanded(
+                              child: Text(
+                                  '${_histName(h.type)}  |  ${cgWhen(h.date)}')),
+                          if (h.dur > 0) Text(cgSecs(h.dur)),
+                        ],
+                      ),
+                    ),
+                ],
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: () => launchUrl(Uri(scheme: 'tel', path: n)),
