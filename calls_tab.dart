@@ -424,7 +424,7 @@ class _CallSheetState extends State<CallSheet> {
         {
           'role': 'user',
           'content':
-              'Ye phone number mujhe call kar raha hai: ${widget.item.number}. App ka basic check: ${_verdict()}. '
+              'Ye phone number mujhe call kar raha hai: ${widget.item.number}. App ka basic check: ${_verdict()}. App ka score aur wajah: $why. Jawab me saaf batao ki ye number spam kyun lag raha hai. '
                   'Kya ye spam ya scam ho sakta hai? Chhota jawab do aur batao mujhe kya karna chahiye.'
         }
       ]);
