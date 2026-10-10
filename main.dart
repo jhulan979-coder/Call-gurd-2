@@ -737,8 +737,8 @@ class _HomeTabState extends State<HomeTab> {
                       Expanded(
                         child: Text(
                           spam
-                              ? 'SPAM$tag  |  ${timeAgo(c.date)}'
-                              : timeAgo(c.date),
+                              ? 'SPAM$tag  |  ${cgWhen(c.date)}'
+                              : cgWhen(c.date),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(color: spam ? Colors.red : null),
