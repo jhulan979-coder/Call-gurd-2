@@ -68,6 +68,22 @@ Future<void> _logErr(String m) async {
   } catch (_) {}
 }
 
+class CallGuardApp extends StatelessWidget {
+  const CallGuardApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Call Guard',
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.dark,
+      theme: pehredaarTheme(),
+      darkTheme: pehredaarTheme(),
+      home: const HomePage(),
+    );
+  }
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
