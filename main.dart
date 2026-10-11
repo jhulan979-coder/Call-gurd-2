@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,22 +47,25 @@ ThemeData pehredaarTheme() {
   );
 }
 
-void main() => runApp(const CallGuardApp());
+void main() {
+  FlutterError.onError = (d) {
+    FlutterError.presentError(d);
+    _logErr(d.exceptionAsString());
+  };
+  runZonedGuarded(() => runApp(const CallGuardApp()), (e, s) => _logErr('$e'));
+}
 
-class CallGuardApp extends StatelessWidget {
-  const CallGuardApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Call Guard',
-      debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark,
-      theme: pehredaarTheme(),
-      darkTheme: pehredaarTheme(),
-      home: const HomePage(),
-    );
-  }
+Future<void> _logErr(String m) async {
+  try {
+    final p = await SharedPreferences.getInstance();
+    final old = p.getString('cg_log') ?? '';
+    final now = DateTime.now();
+    final short = m.length > 200 ? m.substring(0, 200) : m;
+    final lines = old.isEmpty ? <String>[] : old.split('\n');
+    lines.add('${now.day}/${now.month} ${now.hour}:${now.minute}  DARTERR $short');
+    final keep = lines.length > 200 ? lines.sublist(lines.length - 200) : lines;
+    await p.setString('cg_log', keep.join('\n'));
+  } catch (_) {}
 }
 
 class HomePage extends StatefulWidget {
