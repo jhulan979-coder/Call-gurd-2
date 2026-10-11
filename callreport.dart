@@ -80,6 +80,19 @@ class _CallReportPageState extends State<CallReportPage> {
       appBar: AppBar(
         title: const Text('Pichli calls ka hisaab'),
         actions: [
+         IconButton(
+            tooltip: 'Report copy karo',
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(
+                  text:
+                      'Pehredaar log\nDefault: $_isDefault\nSpamAnswer: $_spamAnswer\nAssistant: $_assistant\n\n$_log'));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Report copy ho gayi')));
+              }
+            },
+            icon: const Icon(Icons.copy),
+          ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
           IconButton(onPressed: _clear, icon: const Icon(Icons.delete_outline)),
         ],
